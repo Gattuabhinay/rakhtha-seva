@@ -317,9 +317,9 @@ function Inner() {
           <div className="proof-block">
             <p className="proof-block-title">Your photo for Our Donors</p>
             <p className="muted" style={{ margin: "0 0 0.55rem", fontSize: "0.88rem" }}>
-              After you save, your <strong>photo, name, area, city, and blood group</strong>{" "}
-              appear on <Link to="/donors">Our Donors</Link>. Phone stays private. Camera or
-              gallery.
+              Use the camera or gallery. We auto-crop to a square (face-centered) so your
+              card on <Link to="/donors">Our Donors</Link> never looks stretched. Phone stays
+              private.
             </p>
             <MediaPickers
               kind="photo"
@@ -327,7 +327,12 @@ function Inner() {
               onPick={(k, f) => void onUpload(k, f)}
             />
             {photoUrl && (
-              <img className="donor-photo-preview" src={photoUrl} alt="Your donor photo" />
+              <>
+                <img className="donor-photo-preview" src={photoUrl} alt="Your donor photo" />
+                <p className="donor-photo-frame-hint">
+                  Preview = exact square frame used on the donor wall.
+                </p>
+              </>
             )}
             <div className="alert alert-info" style={{ marginTop: "0.65rem" }}>
               After save you appear on <Link to="/donors">Our Donors</Link> with photo, name,

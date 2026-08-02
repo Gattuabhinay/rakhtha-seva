@@ -23,6 +23,48 @@ function extFromFile(file: File): string {
   return "jpg";
 }
 
+/** Center-square crop so wall cards never stretch from tall camera shots. */
+async function cropImageToSquare(file: File, size = 720): Promise<File> {
+  if (!file.type.startsWith("image/") || typeof createImageBitmap !== "function") {
+    return file;
+  }
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    try {
+      const side = Math.min(bitmap.width, bitmap.height);
+      const sx = Math.floor((bitmap.width - side) / 2);
+      // Slight top bias so faces stay in frame on tall phone photos.
+      const sy = Math.floor((bitmap.height - side) * 0.18);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return file;
+
+      ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size);
+
+      const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, mime, 0.9),
+      );
+      if (!blob) return file;
+
+      const base = file.name.replace(/\.[^.]+$/, "") || "photo";
+      const ext = mime === "image/png" ? "png" : "jpg";
+      return new File([blob], `${base}-square.${ext}`, {
+        type: mime,
+        lastModified: Date.now(),
+      });
+    } finally {
+      bitmap.close();
+    }
+  } catch {
+    return file;
+  }
+}
+
 export function isImageUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   return /\.(jpe?g|png|webp)(\?|$)/i.test(url) || url.includes("/proof-") || url.includes("/photo-");
@@ -47,14 +89,19 @@ export async function uploadDonorMedia(
     throw new Error("Use JPG, PNG, WebP, or PDF (proof only).");
   }
 
+  const uploadFile =
+    kind === "photo" && file.type.startsWith("image/")
+      ? await cropImageToSquare(file)
+      : file;
+
   const supabase = getSupabaseBrowserClient();
-  const ext = extFromFile(file);
+  const ext = extFromFile(uploadFile);
   const path = `${userId}/${kind}-${Date.now()}.${ext}`;
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, uploadFile, {
     cacheControl: "3600",
     upsert: true,
-    contentType: file.type,
+    contentType: uploadFile.type,
   });
   if (error) throw new Error(error.message);
 

@@ -1173,13 +1173,22 @@ textarea:focus {
 }
 
 .donor-photo-preview {
-  width: 88px;
-  height: 88px;
-  border-radius: 50%;
+  width: 112px;
+  height: 112px;
+  border-radius: 16px;
   object-fit: cover;
+  object-position: center 18%;
   border: 3px solid #fff;
   box-shadow: 0 8px 20px rgba(90, 10, 28, 0.18);
   margin-top: 0.35rem;
+  display: block;
+  background: #f3e8eb;
+}
+
+.donor-photo-frame-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
 }
 
 .donor-wall-count {
@@ -1198,7 +1207,8 @@ textarea:focus {
 .donor-wall-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: stretch;
 }
 
 .donor-card {
@@ -1207,12 +1217,18 @@ textarea:focus {
   background: #fff;
   overflow: hidden;
   box-shadow: var(--shadow);
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
 }
 
 .donor-card-photo {
   position: relative;
-  aspect-ratio: 1;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
+  overflow: hidden;
   background:
     radial-gradient(circle at 40% 30%, rgba(225, 29, 72, 0.2), transparent 55%),
     #f3e8eb;
@@ -1221,9 +1237,13 @@ textarea:focus {
 }
 
 .donor-card-photo img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 18%;
+  display: block;
 }
 
 .donor-card-initials {
@@ -1238,37 +1258,55 @@ textarea:focus {
   position: absolute;
   right: 0.65rem;
   bottom: 0.65rem;
+  z-index: 1;
   background: linear-gradient(135deg, #e11d48, #7a0a22);
   color: #fff;
   font-weight: 800;
   font-size: 0.85rem;
   padding: 0.28rem 0.55rem;
   border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(90, 10, 28, 0.28);
 }
 
 .donor-card-body {
   padding: 0.85rem 0.95rem 1rem;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.2rem;
+  flex: 1 1 auto;
+  min-height: 6.75rem;
 }
 
 .donor-card-body strong {
   font-family: var(--display);
   font-size: 1.05rem;
   letter-spacing: -0.02em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25;
+  min-height: 2.5em;
 }
 
 .donor-card-place {
   font-size: 0.86rem;
   color: var(--ink-soft);
   font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .donor-card-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin-top: 0.35rem;
+  margin-top: auto;
+  padding-top: 0.45rem;
 }
 
 .donor-card-badge {

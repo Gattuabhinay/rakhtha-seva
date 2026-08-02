@@ -133,7 +133,12 @@ export function DonorsWallPage() {
               >
                 <div className="donor-card-photo">
                   {img ? (
-                    <img src={img} alt={`${d.full_name} donor`} loading="lazy" />
+                    <img
+                      src={img}
+                      alt={`${d.full_name} donor`}
+                      loading="lazy"
+                      decoding="async"
+                    />
                   ) : (
                     <span className="donor-card-initials">{initials(d.full_name)}</span>
                   )}
@@ -142,15 +147,12 @@ export function DonorsWallPage() {
                   )}
                 </div>
                 <div className="donor-card-body">
-                  <strong>{d.full_name}</strong>
-                  <span className="donor-card-place">{place}</span>
+                  <strong title={d.full_name}>{d.full_name}</strong>
+                  <span className="donor-card-place" title={place}>
+                    {place}
+                  </span>
                   <div className="donor-card-meta">
                     <em className="donor-card-badge">Proof attested</em>
-                    {d.blood_group && (
-                      <em className="donor-card-badge donor-card-badge-soft">
-                        {d.blood_group}
-                      </em>
-                    )}
                   </div>
                 </div>
               </motion.article>
