@@ -51,14 +51,13 @@ export function alertsApiPlugin(): Plugin {
             const html = String(body.html ?? "").trim();
             const text = String(body.text ?? "").trim();
             const apiKey = env.RESEND_API_KEY?.trim() || "";
-            const fromRaw = (env.RESEND_FROM?.trim() || "Rakhtha Seva <beth.t@example.com>").replace(
-              /^["']|["']$/g,
-              "",
-            );
-            // Free Resend: personal inboxes can't be From= until a domain is verified
+            const defaultFrom = "Rakhtha Seva <onboarding@resend.dev>";
+            const fromRaw = (env.RESEND_FROM?.trim() || defaultFrom).replace(/^["']|["']$/g, "");
             const from =
-              /@(gmail|yahoo|outlook|hotmail)\.com/i.test(fromRaw) && !/@resend\.dev/i.test(fromRaw)
-                ? "Rakhtha Seva <beth.t@example.com>"
+              /@example\.com/i.test(fromRaw) ||
+              (/@(gmail|yahoo|outlook|hotmail)\.com/i.test(fromRaw) &&
+                !/@resend\.dev/i.test(fromRaw))
+                ? defaultFrom
                 : fromRaw;
 
             if (!to || (!html && !text)) {

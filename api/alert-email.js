@@ -10,13 +10,12 @@ export default async function handler(req, res) {
     const html = String(body.html ?? "").trim();
     const text = String(body.text ?? "").trim();
     const apiKey = process.env.RESEND_API_KEY?.trim() || "";
-    const fromRaw = (process.env.RESEND_FROM?.trim() || "Rakhtha Seva <beth.t@example.com>").replace(
-      /^["']|["']$/g,
-      "",
-    );
+    const defaultFrom = "Rakhtha Seva <onboarding@resend.dev>";
+    const fromRaw = (process.env.RESEND_FROM?.trim() || defaultFrom).replace(/^["']|["']$/g, "");
     const from =
-      /@(gmail|yahoo|outlook|hotmail)\.com/i.test(fromRaw) && !/@resend\.dev/i.test(fromRaw)
-        ? "Rakhtha Seva <beth.t@example.com>"
+      /@example\.com/i.test(fromRaw) ||
+      (/@(gmail|yahoo|outlook|hotmail)\.com/i.test(fromRaw) && !/@resend\.dev/i.test(fromRaw))
+        ? defaultFrom
         : fromRaw;
 
     if (!to || (!html && !text)) {
