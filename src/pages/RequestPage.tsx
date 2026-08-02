@@ -6,27 +6,13 @@ import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui";
 import { BLOOD_GROUPS, URGENCY_OPTIONS, type BloodGroup, type UrgencyId } from "@/lib/brand";
 import { createEmergencyRequest } from "@/lib/requests";
+import { getMyProfile } from "@/lib/auth";
 import { waMeLink, whatsappAlertMessage, type RankedDonor } from "@/lib/blood";
-import { speakText, stopSpeaking } from "@/lib/speak";
-import {
-  BLAST_CALL_LIMIT,
-  fetchAlertStatus,
-  placeAutoCall,
-  placeAutoCallBlast,
-  sendAlertEmail,
-  telLink,
-  type AlertStatus,
-} from "@/lib/alerts";
-import {
-  ALERT_LANGS,
-  buildCallScript,
-  buildListenScript,
-  type AlertLang,
-} from "@/lib/voiceLocales";
-import { buildEmergencyEmail } from "@/lib/emailTemplate";
+import { fetchAlertStatus, placeAutoCall, telLink, type AlertStatus } from "@/lib/alerts";
+import { ALERT_LANGS, buildCallScript, type AlertLang } from "@/lib/voiceLocales";
 import { openMapsLink, type RankedBloodBank } from "@/lib/bloodBanks";
 
-type ChannelKey = "whatsapp" | "voice" | "call" | "email";
+type ChannelKey = "whatsapp" | "call";
 type ChannelState = "idle" | "running" | "done" | "error" | "skipped";
 
 function Inner() {
@@ -49,27 +35,29 @@ function Inner() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [whatsappTemplate, setWhatsappTemplate] = useState<string | null>(null);
   const [aiSource, setAiSource] = useState<"openrouter" | "fallback" | null>(null);
-  const [speaking, setSpeaking] = useState(false);
-  const [speakError, setSpeakError] = useState<string | null>(null);
+  const [myPhone, setMyPhone] = useState<string | null>(null);
   const [alertLang, setAlertLang] = useState<AlertLang>("en");
   const [alertStatus, setAlertStatus] = useState<AlertStatus | null>(null);
   const [channels, setChannels] = useState<Record<ChannelKey, ChannelState>>({
     whatsapp: "idle",
-    voice: "idle",
     call: "idle",
-    email: "idle",
   });
   const [channelNotes, setChannelNotes] = useState<Record<ChannelKey, string>>({
     whatsapp: "",
-    voice: "",
     call: "",
-    email: "",
   });
   const [blasting, setBlasting] = useState(false);
 
   useEffect(() => {
     void fetchAlertStatus().then(setAlertStatus);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    void getMyProfile(user.id).then((p) => {
+      setMyPhone(p?.phone_e164 || p?.phone || null);
+    });
+  }, [user]);
 
   const eligible = useMemo(() => matches.filter((m) => m.eligible), [matches]);
   const topDonor = eligible[0] ?? null;
@@ -92,40 +80,49 @@ function Inner() {
     setChannelNotes((n) => ({ ...n, [key]: note }));
   }
 
-  async function onListenBrief() {
-    if (!summary) return;
-    setSpeakError(null);
-    setSpeaking(true);
-    setChannel("voice", "running");
-    try {
-      const spoken = buildListenScript({
-        lang: alertLang,
-        summary,
-        topDonorName: topDonor?.full_name,
-        topDonorGroup: topDonor?.blood_group,
-        topDonorArea: topDonor?.area || topDonor?.city,
-      });
-      const result = await speakText(spoken, { lang: alertLang });
-      setChannel(
-        "voice",
-        "done",
-        result.source === "elevenlabs"
-          ? `ElevenLabs played AI brief (${alertLang === "hi" ? "Hindi" : "English"})`
-          : `Browser voice played (${alertLang === "hi" ? "Hindi" : "English"}) — set ELEVENLABS_VOICE_ID to your own free voice for real ElevenLabs`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Voice failed";
-      setSpeakError(msg);
-      setChannel("voice", "error", msg);
-    } finally {
-      setSpeaking(false);
-    }
+  function blastVoiceLine() {
+    return buildCallScript({
+      lang: alertLang,
+      patientName,
+      bloodGroup,
+      units,
+      hospital,
+      city,
+    });
   }
 
-  function onStopListen() {
-    stopSpeaking();
-    setSpeaking(false);
-    setChannel("voice", "idle");
+  async function onCallMyPhone() {
+    if (!myPhone?.trim()) {
+      setChannel(
+        "call",
+        "error",
+        "Add your phone in Profile first — Twilio calls only the number you registered.",
+      );
+      return;
+    }
+    setChannel("call", "running", `Calling your registered number…`);
+    const result = await placeAutoCall({
+      toPhone: myPhone,
+      message: blastVoiceLine(),
+      lang: alertLang,
+    });
+    if (result.ok) {
+      setChannel(
+        "call",
+        "done",
+        `Twilio called your phone (${alertLang === "hi" ? "Hindi" : "English"}). Add it under Twilio Verified Caller IDs if trial blocks.`,
+      );
+    } else if (result.configured === false) {
+      window.location.href = telLink(myPhone);
+      setChannel("call", "error", "Twilio keys missing — opened phone dialer instead.");
+    } else {
+      setChannel(
+        "call",
+        "error",
+        result.error ||
+          "Call failed — verify your number in Twilio Verified Caller IDs (trial accounts).",
+      );
+    }
   }
 
   function openWhatsAppTop() {
@@ -147,91 +144,11 @@ function Inner() {
     setChannel("whatsapp", "done", `Opened chat with ${topDonor.full_name}`);
   }
 
-  function blastVoiceLine() {
-    return buildCallScript({
-      lang: alertLang,
-      patientName,
-      bloodGroup,
-      units,
-      hospital,
-      city,
-    });
-  }
-
-  async function onAutoCallEligible() {
-    const targets = eligible.slice(0, BLAST_CALL_LIMIT);
-    if (targets.length === 0) {
-      setChannel("call", "skipped", "No eligible donor for this blood group");
-      return;
-    }
-    setChannel("call", "running", `Calling ${targets.length} eligible ${bloodGroup} donors…`);
-    const result = await placeAutoCallBlast({
-      phones: targets.map((t) => t.phone),
-      message: blastVoiceLine(),
-      lang: alertLang,
-      limit: BLAST_CALL_LIMIT,
-    });
-    if (result.ok) {
-      setChannel(
-        "call",
-        "done",
-        `Twilio called ${result.succeeded}/${result.attempted} eligible (${alertLang === "hi" ? "Hindi" : "English"}) for ${bloodGroup}`,
-      );
-    } else if (result.configured === false) {
-      if (topDonor) window.location.href = telLink(topDonor.phone);
-      setChannel(
-        "call",
-        "error",
-        "Twilio keys missing — opened dialer for top donor. Add TWILIO_* to .env.local to blast all eligible.",
-      );
-    } else {
-      setChannel(
-        "call",
-        "error",
-        result.errors[0] || `Calls failed (${result.failed}/${result.attempted})`,
-      );
-    }
-  }
-
-  async function onEmailSummary() {
-    if (!user?.email || !summary) {
-      setChannel("email", "skipped", "No email / summary");
-      return;
-    }
-    setChannel("email", "running");
-    const blastTargets = eligible.slice(0, BLAST_CALL_LIMIT);
-    const mail = buildEmergencyEmail({
-      to: user.email,
-      patientName,
-      bloodGroup,
-      units,
-      hospital,
-      city,
-      urgency,
-      summary,
-      requestId,
-      donors: blastTargets,
-      lang: alertLang,
-    });
-    const result = await sendAlertEmail(mail);
-    if (result.ok) {
-      setChannel(
-        "email",
-        "done",
-        `Resend template sent to ${user.email} (${blastTargets.length} donors, ${alertLang === "hi" ? "Hindi" : "English"})`,
-      );
-    } else {
-      setChannel("email", "error", result.error || "Email failed");
-    }
-  }
-
   async function onAlertBlast() {
     if (!topDonor || !summary) return;
     setBlasting(true);
     openWhatsAppTop();
-    await onListenBrief();
-    await onAutoCallEligible();
-    await onEmailSummary();
+    await onCallMyPhone();
     setBlasting(false);
   }
 
@@ -240,8 +157,8 @@ function Inner() {
     if (!user) return;
     setError(null);
     setLoading(true);
-    setChannels({ whatsapp: "idle", voice: "idle", call: "idle", email: "idle" });
-    setChannelNotes({ whatsapp: "", voice: "", call: "", email: "" });
+    setChannels({ whatsapp: "idle", call: "idle" });
+    setChannelNotes({ whatsapp: "", call: "" });
     try {
       const {
         request,
@@ -294,9 +211,8 @@ function Inner() {
           Request blood help
         </h1>
         <p className="section-lede">
-          Emergency for blood group X → rank every eligible match → Twilio calls them,
-          email logs the blast, ElevenLabs speaks the AI brief. MVP free-tier blast = top{" "}
-          {BLAST_CALL_LIMIT} eligible.
+          Emergency for blood group X → AI ranks eligible donors → WhatsApp to top match →
+          Twilio calls <strong>your registered phone</strong> (Profile). No blast to all donors.
         </p>
 
         <div className="dash-grid">
@@ -404,14 +320,12 @@ function Inner() {
               </li>
               <li>
                 <strong>Blast</strong>
-                <span>AI ranks → call · WhatsApp · voice · email</span>
+                <span>AI ranks → WhatsApp · Twilio calls you</span>
               </li>
             </ol>
             <div className="request-channel-pills">
               {statusChip(alertStatus?.openrouter, "OpenRouter")}
-              {statusChip(alertStatus?.elevenlabs, "ElevenLabs")}
               {statusChip(alertStatus?.twilio, "Twilio")}
-              {statusChip(alertStatus?.resend, "Resend")}
             </div>
             <p className="donor-stage-foot">
               Call the hospital blood bank first. We coordinate donors — we do not replace clinical care.
@@ -441,7 +355,7 @@ function Inner() {
             <div className="panel alert-blast">
               <div className="lang-row" style={{ marginBottom: "0.85rem" }}>
                 <span className="muted" style={{ fontSize: "0.9rem", fontWeight: 700 }}>
-                  Voice language (ElevenLabs + Twilio)
+                  Twilio voice language
                 </span>
                 <div className="cta-row" style={{ marginTop: "0.4rem" }}>
                   {ALERT_LANGS.map((l) => (
@@ -455,30 +369,25 @@ function Inner() {
                     </button>
                   ))}
                 </div>
-                <p className="muted" style={{ margin: "0.4rem 0 0", fontSize: "0.82rem" }}>
-                  Final MVP: English + Hindi on Flash v2.5. Telugu needs Eleven v3 later — not claimed today.
-                </p>
               </div>
               <div className="alert-blast-head">
                 <div>
-                  <strong>Fire the {bloodGroup} emergency blast</strong>
+                  <strong>Fire the {bloodGroup} alert</strong>
                   <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>
-                    WhatsApp (top) → ElevenLabs listen → Twilio calls up to {BLAST_CALL_LIMIT}{" "}
-                    eligible {bloodGroup} matches → email receipt to you.
+                    WhatsApp to top donor → Twilio calls{" "}
+                    <strong>{myPhone ? "your registered phone" : "your phone (add in Profile)"}</strong>.
                     {eligible.length
-                      ? ` ${Math.min(eligible.length, BLAST_CALL_LIMIT)} donors ready to call.`
+                      ? ` ${eligible.length} eligible ${bloodGroup} match${eligible.length === 1 ? "" : "es"} ranked.`
                       : " No eligible donor yet."}
                   </p>
                 </div>
                 <Button
                   type="button"
                   variant="primary"
-                  disabled={!topDonor || blasting}
+                  disabled={!topDonor || blasting || !myPhone}
                   onClick={() => void onAlertBlast()}
                 >
-                  {blasting
-                    ? "Blasting donors…"
-                    : `Blast ${Math.min(eligible.length, BLAST_CALL_LIMIT) || 0} eligible donors`}
+                  {blasting ? "Running alert…" : "WhatsApp + call my phone"}
                 </Button>
               </div>
 
@@ -486,9 +395,7 @@ function Inner() {
                 {(
                   [
                     ["whatsapp", "WhatsApp", "AI template to top match"],
-                    ["voice", "Listen", "ElevenLabs speaks AI brief"],
-                    ["call", "Twilio blast", `Call all eligible (max ${BLAST_CALL_LIMIT})`],
-                    ["email", "Email", "Resend emergency receipt"],
+                    ["call", "Twilio", "Voice call to your registered number only"],
                   ] as const
                 ).map(([key, title, sub]) => (
                   <div key={key} className="channel-card">
@@ -510,50 +417,25 @@ function Inner() {
                           Open WhatsApp
                         </Button>
                       )}
-                      {key === "voice" && (
-                        <>
-                          <Button
-                            type="button"
-                            variant="primary"
-                            onClick={() => void onListenBrief()}
-                            disabled={speaking || !summary}
-                          >
-                            {speaking ? "Speaking…" : "Listen"}
-                          </Button>
-                          {speaking && (
-                            <Button type="button" variant="secondary" onClick={onStopListen}>
-                              Stop
-                            </Button>
-                          )}
-                        </>
-                      )}
                       {key === "call" && (
                         <Button
                           type="button"
                           variant="primary"
-                          disabled={!topDonor || channels.call === "running"}
-                          onClick={() => void onAutoCallEligible()}
+                          disabled={!myPhone || channels.call === "running"}
+                          onClick={() => void onCallMyPhone()}
                         >
-                          {channels.call === "running"
-                            ? "Calling eligible…"
-                            : `Call ${Math.min(eligible.length, BLAST_CALL_LIMIT)} eligible`}
-                        </Button>
-                      )}
-                      {key === "email" && (
-                        <Button
-                          type="button"
-                          variant="primary"
-                          disabled={!summary || channels.email === "running"}
-                          onClick={() => void onEmailSummary()}
-                        >
-                          {channels.email === "running" ? "Sending…" : "Email me summary"}
+                          {channels.call === "running" ? "Calling…" : "Call my phone"}
                         </Button>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-              {speakError && <div className="alert alert-error" style={{ marginTop: "0.85rem" }}>{speakError}</div>}
+              {!myPhone && (
+                <div className="alert alert-warn" style={{ marginTop: "0.85rem" }}>
+                  Add your phone in <Link to="/profile">Profile</Link> so Twilio can call you.
+                </div>
+              )}
             </div>
 
             {banks.length > 0 && (

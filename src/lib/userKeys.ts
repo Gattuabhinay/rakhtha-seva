@@ -1,5 +1,5 @@
 /** Browser-held OpenRouter key (BYOK) for AI match brief / WhatsApp text.
- * Twilio + ElevenLabs always use admin .env.local — never user keys.
+ * Twilio voice calls always use admin .env.local — never user keys.
  */
 
 const KEY = "rakhtha_user_keys_v1";

@@ -298,6 +298,23 @@ export async function requestPasswordReset(email: string): Promise<void> {
   if (error) throw new Error(friendlyAuthError(error.message));
 }
 
+/** Resend Supabase signup confirmation email (correct project Auth → Confirm email). */
+export async function resendConfirmationEmail(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail) throw new Error("Enter the email you registered with.");
+  if (cleanEmail === DEMO_ACCOUNT.email) {
+    throw new Error("Demo account does not need email confirmation.");
+  }
+  const supabase = getSupabaseBrowserClient();
+  const emailRedirectTo = `${window.location.origin}/login`;
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: cleanEmail,
+    options: { emailRedirectTo },
+  });
+  if (error) throw new Error(friendlyAuthError(error.message));
+}
+
 export async function updatePassword(newPassword: string): Promise<void> {
   if (newPassword.length < 6) {
     throw new Error("Password must be at least 6 characters.");

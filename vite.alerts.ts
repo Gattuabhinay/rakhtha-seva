@@ -42,76 +42,7 @@ export function alertsApiPlugin(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         const url = req.url?.split("?")[0] ?? "";
 
-        // --- Resend email ---
-        if (url === "/api/alert-email" && req.method === "POST") {
-          try {
-            const body = await readJson(req);
-            const to = String(body.to ?? "").trim();
-            const subject = String(body.subject ?? "Rakhtha Seva emergency match").trim();
-            const html = String(body.html ?? "").trim();
-            const text = String(body.text ?? "").trim();
-            const apiKey = env.RESEND_API_KEY?.trim() || "";
-            const defaultFrom = "Rakhtha Seva <onboarding@resend.dev>";
-            const fromRaw = (env.RESEND_FROM?.trim() || defaultFrom).replace(/^["']|["']$/g, "");
-            const from =
-              /@example\.com/i.test(fromRaw) ||
-              (/@(gmail|yahoo|outlook|hotmail)\.com/i.test(fromRaw) &&
-                !/@resend\.dev/i.test(fromRaw))
-                ? defaultFrom
-                : fromRaw;
-
-            if (!to || (!html && !text)) {
-              res.statusCode = 400;
-              res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify({ error: "Missing to/body" }));
-              return;
-            }
-            if (apiKey.length < 10) {
-              res.statusCode = 503;
-              res.setHeader("Content-Type", "application/json");
-              res.end(
-                JSON.stringify({
-                  error:
-                    "RESEND_API_KEY missing in .env.local. Add it, restart npm run dev.",
-                  configured: false,
-                }),
-              );
-              return;
-            }
-
-            const upstream = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from,
-                to: [to],
-                subject,
-                html: html || undefined,
-                text: text || undefined,
-              }),
-            });
-            const data = (await upstream.json()) as { id?: string; message?: string };
-            if (!upstream.ok) {
-              res.statusCode = upstream.status;
-              res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify({ error: data.message || "Resend failed", configured: true }));
-              return;
-            }
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ ok: true, id: data.id, configured: true }));
-          } catch (e) {
-            res.statusCode = 500;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ error: e instanceof Error ? e.message : "Email failed" }));
-          }
-          return;
-        }
-
-        // --- Twilio auto-call (Meaning B) ---
+        // --- Twilio auto-call ---
         if (url === "/api/place-call" && req.method === "POST") {
           try {
             const body = await readJson(req);
@@ -219,13 +150,11 @@ export function alertsApiPlugin(): Plugin {
           res.end(
             JSON.stringify({
               openrouter: Boolean(env.OPENROUTER_API_KEY?.trim()),
-              elevenlabs: Boolean(env.ELEVENLABS_API_KEY?.trim()),
               twilio: Boolean(
                 env.TWILIO_ACCOUNT_SID?.trim() &&
                   env.TWILIO_AUTH_TOKEN?.trim() &&
                   env.TWILIO_FROM_NUMBER?.trim(),
               ),
-              resend: Boolean(env.RESEND_API_KEY?.trim()),
             }),
           );
           return;

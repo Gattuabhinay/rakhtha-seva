@@ -47,7 +47,7 @@ export function UserKeysPanel() {
           in this browser.
         </p>
         <p className="muted" style={{ margin: "0.55rem 0 0", fontSize: "0.88rem" }}>
-          <strong>Twilio</strong> and <strong>ElevenLabs</strong> always stay on admin keys.
+          <strong>Twilio</strong> voice calls always use admin keys in <code>.env.local</code>.
         </p>
       </div>
 

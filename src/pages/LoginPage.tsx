@@ -3,7 +3,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "@/components/AuthProvider";
 import { Button, Panel } from "@/components/ui";
-import { DEMO_ACCOUNT, friendlyAuthError, isPasswordRecoveryPending } from "@/lib/auth";
+import {
+  DEMO_ACCOUNT,
+  friendlyAuthError,
+  isPasswordRecoveryPending,
+  resendConfirmationEmail,
+} from "@/lib/auth";
 import { BRAND } from "@/lib/brand";
 
 type AuthMode = "login" | "register" | "forgot";
@@ -26,6 +31,8 @@ export function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resetSentTo, setResetSentTo] = useState<string | null>(null);
+  const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   useEffect(() => setMode(initialMode), [initialMode]);
 
@@ -79,8 +86,9 @@ export function LoginPage() {
         setError(null);
         setResetSentTo(null);
         setEmail(confirmedEmail);
+        setPendingConfirmEmail(confirmedEmail);
         setInfo(
-          `Account created. Open the confirmation email Supabase sent to ${confirmedEmail}, then Login here. No SMS OTP — email confirmation is your verification.`,
+          `Account created on Rakhtha Seva. Open the confirmation email from Supabase at ${confirmedEmail}, then Login. Check spam if you do not see it.`,
         );
         return;
       }
@@ -102,6 +110,25 @@ export function LoginPage() {
       setError(err instanceof Error ? err.message : "Demo login failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onResendConfirm() {
+    const target = (pendingConfirmEmail || email).trim().toLowerCase();
+    if (!target) {
+      setError("Enter your email first, then resend confirmation.");
+      return;
+    }
+    setResending(true);
+    setError(null);
+    try {
+      await resendConfirmationEmail(target);
+      setPendingConfirmEmail(target);
+      setInfo(`Confirmation email resent to ${target}. Open that link, then Login.`);
+    } catch (err) {
+      setError(friendlyAuthError(err instanceof Error ? err.message : "Could not resend"));
+    } finally {
+      setResending(false);
     }
   }
 
@@ -200,6 +227,17 @@ export function LoginPage() {
                       ? "Login"
                       : "Create account"}
               </Button>
+
+              {mode === "login" && (
+                <button
+                  type="button"
+                  className="text-link"
+                  disabled={resending || loading}
+                  onClick={() => void onResendConfirm()}
+                >
+                  {resending ? "Resending…" : "Resend confirmation email"}
+                </button>
+              )}
             </form>
 
             {mode === "forgot" ? (

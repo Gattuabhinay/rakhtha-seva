@@ -121,7 +121,7 @@ export function HomePage() {
           <div className="win-band">
             <h2>AI for public health impact</h2>
             <p>
-              Rank eligible donors, speak the emergency brief, place real outbound
+              Rank eligible donors, alert via WhatsApp, Twilio calls your registered phone.
               calls, and guide families to nearby blood banks — built for Hyderabad
               emergencies when every minute matters.
             </p>

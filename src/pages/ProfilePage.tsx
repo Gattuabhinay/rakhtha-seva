@@ -60,7 +60,7 @@ function Inner() {
         </h1>
         <p className="section-lede">
           Account email is managed by Supabase Auth. AI WhatsApp/match text uses the admin
-          OpenRouter key unless you paste your own below. Twilio and ElevenLabs stay admin-only.
+          OpenRouter key unless you paste your own below. Twilio voice calls use admin keys only.
         </p>
         <form className="panel form-grid" onSubmit={(e) => void onSave(e)} style={{ maxWidth: 520 }}>
           <label>
