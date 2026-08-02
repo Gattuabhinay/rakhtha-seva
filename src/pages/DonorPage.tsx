@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/components/AuthProvider";
+import { CameraCapture } from "@/components/CameraCapture";
 import { getMyProfile, upsertMyProfile, type RakhthaProfile } from "@/lib/auth";
 import { BLOOD_GROUPS, type BloodGroup } from "@/lib/brand";
 import { normalizePhoneInput } from "@/lib/phone";
@@ -19,8 +20,8 @@ function MediaPickers({
   busy: boolean;
   onPick: (kind: MediaKind, file: File | null) => void;
 }) {
-  const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const accept =
     kind === "photo"
       ? "image/jpeg,image/png,image/webp"
@@ -28,17 +29,6 @@ function MediaPickers({
 
   return (
     <div className="media-pick-row">
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        hidden
-        onChange={(e) => {
-          onPick(kind, e.target.files?.[0] || null);
-          e.target.value = "";
-        }}
-      />
       <input
         ref={galleryRef}
         type="file"
@@ -51,11 +41,11 @@ function MediaPickers({
       />
       <button
         type="button"
-        className="btn btn-secondary"
+        className="btn btn-primary"
         disabled={busy}
-        onClick={() => cameraRef.current?.click()}
+        onClick={() => setCameraOpen(true)}
       >
-        {busy ? "Uploading…" : "Take photo"}
+        {busy ? "Uploading…" : "Open camera"}
       </button>
       <button
         type="button"
@@ -65,6 +55,13 @@ function MediaPickers({
       >
         {busy ? "Uploading…" : kind === "proof" ? "Gallery / PDF" : "Choose from gallery"}
       </button>
+      <CameraCapture
+        open={cameraOpen}
+        title={kind === "photo" ? "Donor photo — camera" : "Blood-group proof — camera"}
+        facingMode={kind === "photo" ? "user" : "environment"}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => onPick(kind, file)}
+      />
     </div>
   );
 }
@@ -317,9 +314,9 @@ function Inner() {
           <div className="proof-block">
             <p className="proof-block-title">Your photo for Our Donors</p>
             <p className="muted" style={{ margin: "0 0 0.55rem", fontSize: "0.88rem" }}>
-              Use the camera or gallery. We auto-crop to a square (face-centered) so your
-              card on <Link to="/donors">Our Donors</Link> never looks stretched. Phone stays
-              private.
+              Tap <strong>Open camera</strong> (live selfie) or <strong>Choose from gallery</strong>.
+              We square-crop so your card on <Link to="/donors">Our Donors</Link> stays
+              perfect. Phone stays private.
             </p>
             <MediaPickers
               kind="photo"
