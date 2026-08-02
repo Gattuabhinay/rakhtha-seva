@@ -1,4 +1,5 @@
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { BloodGroup } from "@/lib/brand";
 
 export type AuthUser = {
   id: string;
@@ -6,14 +7,13 @@ export type AuthUser = {
   email: string;
 };
 
-/** Always-available judge / demo credentials (local fallback if Supabase fails). */
 export const DEMO_ACCOUNT = {
-  name: "Demo Citizen",
-  email: "demo@prajarakshak.ts",
-  password: "Telangana@2026",
+  name: "Demo Sevak",
+  email: "demo@rakhthaseva.in",
+  password: "RakhthaSeva@2026",
 } as const;
 
-const DEMO_SESSION_KEY = "praja_rakshak_demo_session_v1";
+const DEMO_SESSION_KEY = "rakhtha_demo_session_v1";
 
 function readDemoSession(): AuthUser | null {
   if (typeof window === "undefined") return null;
@@ -43,7 +43,7 @@ export function isDemoUser(user: AuthUser | null | undefined): boolean {
 
 function localDemoUser(): AuthUser {
   return {
-    id: "demo-local-citizen",
+    id: "demo-local-rakhtha",
     name: DEMO_ACCOUNT.name,
     email: DEMO_ACCOUNT.email,
   };
@@ -61,7 +61,7 @@ export async function getSessionUser(): Promise<AuthUser | null> {
   const metaName = String(data.user.user_metadata?.full_name ?? "").trim();
 
   const { data: profile } = await supabase
-    .from("prajasetu_profiles")
+    .from("rakhtha_profiles")
     .select("full_name,email")
     .eq("id", data.user.id)
     .maybeSingle();
@@ -69,18 +69,90 @@ export async function getSessionUser(): Promise<AuthUser | null> {
   return {
     id: data.user.id,
     email: profile?.email || email,
-    name: profile?.full_name || metaName || email.split("@")[0] || "Citizen",
+    name: profile?.full_name || metaName || email.split("@")[0] || "Member",
   };
+}
+
+export function friendlyAuthError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("rate limit") || m.includes("over_email_send_rate_limit")) {
+    return "Email rate limit hit. Wait a bit, try Login, or use the Demo account. For judging: turn OFF Confirm email in Supabase Auth.";
+  }
+  if (m.includes("user already registered") || m.includes("already been registered")) {
+    return "This email already has an account. Switch to Login, or use Forgot password.";
+  }
+  if (m.includes("redirect") && (m.includes("not allowed") || m.includes("whitelist") || m.includes("allow"))) {
+    return "Reset redirect URL is not allowed in Supabase. Add http://localhost:5050/reset-password and your production /reset-password under Auth → URL Configuration.";
+  }
+  if (m.includes("invalid login credentials")) {
+    return "Invalid login credentials. Check email/password, or use Forgot password to reset via Supabase email.";
+  }
+  return message;
+}
+
+const RECOVERY_FLAG = "rakhtha_password_recovery";
+
+export function markPasswordRecovery() {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(RECOVERY_FLAG, "1");
+}
+
+export function clearPasswordRecovery() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(RECOVERY_FLAG);
+}
+
+export function isPasswordRecoveryPending(): boolean {
+  if (typeof window === "undefined") return false;
+  return sessionStorage.getItem(RECOVERY_FLAG) === "1";
+}
+
+/** Consume Supabase recovery link (?code= or #access_token) so updatePassword can run. */
+export async function ensurePasswordRecoverySession(): Promise<void> {
+  const supabase = getSupabaseBrowserClient();
+  clearDemoSession();
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const queryParams = new URLSearchParams(window.location.search);
+  const err =
+    queryParams.get("error_description") ||
+    hashParams.get("error_description") ||
+    queryParams.get("error") ||
+    hashParams.get("error");
+  if (err) {
+    throw new Error(decodeURIComponent(err.replace(/\+/g, " ")));
+  }
+
+  const code = queryParams.get("code");
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw new Error(friendlyAuthError(error.message));
+    window.history.replaceState({}, "", "/reset-password");
+  }
+
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    markPasswordRecovery();
+    return;
+  }
+
+  // Hash tokens: detectSessionInUrl usually handles this; give it a moment then re-check
+  await new Promise((r) => window.setTimeout(r, 250));
+  const again = await supabase.auth.getSession();
+  if (again.data.session) {
+    markPasswordRecovery();
+    return;
+  }
+
+  throw new Error(
+    "Reset link is missing or expired. Go to Login → Forgot password, request a new Supabase email, then open the latest link.",
+  );
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
   const cleanEmail = email.trim().toLowerCase();
 
-  // Demo credentials always work — try Supabase, then local session.
-  if (
-    cleanEmail === DEMO_ACCOUNT.email &&
-    password === DEMO_ACCOUNT.password
-  ) {
+  if (cleanEmail === DEMO_ACCOUNT.email && password === DEMO_ACCOUNT.password) {
     return loginAsDemo();
   }
 
@@ -96,7 +168,6 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   return user;
 }
 
-/** One-click demo entry for judges / stuck users. */
 export async function loginAsDemo(): Promise<AuthUser> {
   const supabase = getSupabaseBrowserClient();
 
@@ -119,25 +190,27 @@ export async function loginAsDemo(): Promise<AuthUser> {
       email: DEMO_ACCOUNT.email,
       password: DEMO_ACCOUNT.password,
       options: {
-        data: {
-          full_name: DEMO_ACCOUNT.name,
-          state: "Telangana",
-        },
+        data: { full_name: DEMO_ACCOUNT.name },
       },
     });
-    if (!error && data.session) {
+    if (!error && data.session && data.user) {
       clearDemoSession();
-      await supabase.from("prajasetu_profiles").upsert({
-        id: data.user!.id,
+      await supabase.from("rakhtha_profiles").upsert({
+        id: data.user.id,
         full_name: DEMO_ACCOUNT.name,
         email: DEMO_ACCOUNT.email,
-        state: "Telangana",
+        city: "Hyderabad",
+        is_donor: true,
+        available: true,
+        blood_group: "O+",
+        phone: "9999900001",
+        area: "Gachibowli",
       });
       const user = await getSessionUser();
       if (user) return user;
     }
   } catch {
-    // fall through to local demo
+    // fall through
   }
 
   const user = localDemoUser();
@@ -148,18 +221,6 @@ export async function loginAsDemo(): Promise<AuthUser> {
     // ignore
   }
   return user;
-}
-
-/** Map scary provider messages into calm, actionable copy. */
-export function friendlyAuthError(message: string): string {
-  const m = message.toLowerCase();
-  if (m.includes("rate limit") || m.includes("over_email_send_rate_limit")) {
-    return "Supabase email limit hit (too many signup/reset emails). Wait 30–60 minutes, try Login if the account already exists, or use the Demo account. For judging: turn OFF Confirm email in Supabase Auth settings.";
-  }
-  if (m.includes("user already registered") || m.includes("already been registered")) {
-    return "This email already has an account. Switch to Login, or use Forgot password.";
-  }
-  return message;
 }
 
 export async function register(
@@ -178,10 +239,7 @@ export async function register(
     email: cleanEmail,
     password,
     options: {
-      data: {
-        full_name: cleanName,
-        state: "Telangana",
-      },
+      data: { full_name: cleanName },
     },
   });
 
@@ -190,18 +248,16 @@ export async function register(
 
   clearDemoSession();
 
-  // Ensure profile row exists even if trigger is delayed.
-  await supabase.from("prajasetu_profiles").upsert({
+  await supabase.from("rakhtha_profiles").upsert({
     id: data.user.id,
     full_name: cleanName,
     email: cleanEmail,
-    state: "Telangana",
+    city: "Hyderabad",
   });
 
-  // If email confirmation is enabled and no session yet:
   if (!data.session) {
     throw new Error(
-      "Account created. Confirm your email (if required), then Login — or disable Confirm email in Supabase for instant demo signup.",
+      "Account created. Confirm your email (if required), then Login — or disable Confirm email in Supabase for instant signup.",
     );
   }
 
@@ -216,20 +272,23 @@ export async function logout() {
   await supabase.auth.signOut();
 }
 
-/** Sends a real Supabase password-reset email with a recovery link. */
 export async function requestPasswordReset(email: string): Promise<void> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) throw new Error("Enter the email linked to your account.");
-
+  if (cleanEmail === DEMO_ACCOUNT.email) {
+    throw new Error(
+      `Demo account cannot reset by email. Use password ${DEMO_ACCOUNT.password} or “Enter with demo”.`,
+    );
+  }
+  clearDemoSession();
   const supabase = getSupabaseBrowserClient();
   const redirectTo = `${window.location.origin}/reset-password`;
   const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
     redirectTo,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(friendlyAuthError(error.message));
 }
 
-/** Sets a new password after the user opens the Supabase recovery email link. */
 export async function updatePassword(newPassword: string): Promise<void> {
   if (newPassword.length < 6) {
     throw new Error("Password must be at least 6 characters.");
@@ -242,5 +301,71 @@ export async function updatePassword(newPassword: string): Promise<void> {
     );
   }
   const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(friendlyAuthError(error.message));
+  clearPasswordRecovery();
+}
+
+export type RakhthaProfile = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  phone_e164?: string | null;
+  phone_verified_at?: string | null;
+  city: string | null;
+  area: string | null;
+  blood_group: BloodGroup | null;
+  is_donor: boolean;
+  available: boolean;
+  last_donation_date: string | null;
+  emergency_consent?: boolean;
+  consent_accepted_at?: string | null;
+  blood_proof_url?: string | null;
+  blood_proof_status?: string | null;
+  blood_attested_at?: string | null;
+  photo_url?: string | null;
+  show_on_donor_wall?: boolean;
+};
+
+export async function getMyProfile(userId: string): Promise<RakhthaProfile | null> {
+  if (userId.startsWith("demo-")) {
+    return {
+      id: userId,
+      full_name: DEMO_ACCOUNT.name,
+      email: DEMO_ACCOUNT.email,
+      phone: "9999900001",
+      phone_e164: "+919999900001",
+      phone_verified_at: new Date().toISOString(),
+      city: "Hyderabad",
+      area: "Gachibowli",
+      blood_group: "O+",
+      is_donor: true,
+      available: true,
+      last_donation_date: null,
+      emergency_consent: true,
+      consent_accepted_at: new Date().toISOString(),
+    };
+  }
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("rakhtha_profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as RakhthaProfile | null;
+}
+
+export async function upsertMyProfile(
+  userId: string,
+  patch: Partial<RakhthaProfile> & { full_name: string; email: string },
+): Promise<void> {
+  if (userId.startsWith("demo-")) return;
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase.from("rakhtha_profiles").upsert({
+    id: userId,
+    ...patch,
+    updated_at: new Date().toISOString(),
+  });
   if (error) throw new Error(error.message);
 }

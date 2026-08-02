@@ -1,29 +1,32 @@
 {
-  "name": "praja-rakshak",
+  "name": "rakhtha-seva",
   "version": "1.0.0",
   "private": true,
-  "description": "Praja Rakshak — AI waste segregation and Telangana civic complaint guide for Idea2Impact 2026",
+  "type": "module",
+  "description": "Rakhtha Seva — AI blood emergency seva (React + Vite)",
   "scripts": {
-    "dev": "next dev --port 5050",
-    "build": "next build",
-    "start": "next start --port 5050",
-    "lint": "eslint"
+    "dev": "vite --port 5050",
+    "build": "vite build",
+    "preview": "vite preview --port 5050"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.110.7",
-    "next": "16.2.10",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "framer-motion": "^12.23.12",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.7.1",
+    "three": "^0.185.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^26.1.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.10",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "@types/three": "^0.185.3",
+    "@vercel/node": "^5.9.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.6"
   }
 }

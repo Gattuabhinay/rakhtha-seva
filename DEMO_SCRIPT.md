@@ -1,28 +1,34 @@
-# Praja Rakshak Demo Script (2–3 minutes)
+# Rakhtha Seva · Winner demo (2–3 min)
 
-## Clear wrap to say first
-“Praja Rakshak is one product: Clean Up and Speak Up.”
+## Pitch line (say this first)
+“Emergency for blood group X — Rakhtha Seva ranks eligible donors, then Twilio calls them, with WhatsApp, voice, and email in the same loop.”
 
-## 0:00–0:25 · Problem
-“Theme 1 Social Impact. In Telangana, dirty waste and blocked justice hurt citizens. People don’t know the correct bin — or how to file a real complaint.”
+## Live path
+1. Home — Theme 2 badge + stack (OpenRouter / ElevenLabs / Twilio / Resend)
+2. Login: `demo@rakhthaseva.in` / `RakhthaSeva@2026`
+3. Dashboard → **Emergency request**
+4. Donor path once: **Be a donor** → **Get OTP** → verify → upload **blood-group proof** + attest → photo + **Our Donors** tick → save  
+4b. Open **Our Donors** — photo, location, blood type (phone private). Only attested donors get emergency alerts.
+4b. Tap **Fill judge demo (O− critical)** → confirm share terms tick → **Find donors + AI brief**
+4c. Header **Alerts** bell shows: “Your blood group is needed…” (demo + consented donors)
+5. Show **AI: OpenRouter live** badge + ranked scores / eligibility reasons
+5b. Show **Nearby blood banks** + AI banks note → tap **Open Maps** / **Call bank**
+6. **Alert Command Center** → tap **Blast N eligible donors**
+   - Meaning: emergency for blood group X → Twilio calls eligible matches (MVP max 5)
+   - WhatsApp opens for top match (AI template)
+   - Toggle **English / हिन्दी** → Listen = ElevenLabs speaks brief
+   - Twilio blast = same language outbound voice to eligible phones
+   - Email = Resend receipt to requester with who was called
+   - Do NOT claim Telugu live — that needs Eleven v3 Conversational later
+7. Honest free-tier note if asked: “MVP blasts top eligible matches; production scales the same loop.”
+8. Optional: History → mark fulfilled
 
-## 0:25–0:40 · Product wrap
-“Praja Rakshak = Clean Up + Speak Up. AI prepares. Official portals file.”
+## Keys that make judges gasp
+- **OpenRouter:** admin key in `.env.local` by default; user may paste own key in Profile (optional override)
+- **Admin only:** Twilio voice/OTP, ElevenLabs Listen, Resend email  
+  Restart `npm run dev` after changing admin `.env.local` keys.
 
-## 0:40–1:25 · Clean Up
-1. Open Clean Up  
-2. Upload waste photos → Wet / Hazardous / Dry  
-3. Show confidence + tips  
+Sidebar chips show **ready / off** so you never fake a channel.
 
-“Vision AI is the core.”
-
-## 1:25–2:25 · Speak Up
-1. Open Speak Up  
-2. Show case types: waste, police bribery, FIR refusal, corruption, women safety  
-3. Generate complaint  
-4. Open ACB / GHMC / Lokayukta / Women Safety redirect  
-
-“No fake case IDs — government systems file.”
-
-## 2:25–2:50 · Close
-“One platform. Two actions. Social impact for Telangana — Praja Rakshak. Thank you.”
+## Honest judge answer
+“We are not a blood bank. We are the coordination layer between panic and the right donor — Theme 2 healthcare AI with a complete multi-channel alert loop.”

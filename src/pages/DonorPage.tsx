@@ -1,0 +1,673 @@
+import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { RequireAuth } from "@/components/RequireAuth";
+import { useAuth } from "@/components/AuthProvider";
+import { getMyProfile, upsertMyProfile, type RakhthaProfile } from "@/lib/auth";
+import { BLOOD_GROUPS, type BloodGroup } from "@/lib/brand";
+import {
+  confirmOtpSession,
+  fetchOtpStatus,
+  maskPhoneDisplay,
+  normalizePhoneInput,
+  sendOtp,
+  verifyOtp,
+  type OtpChannel,
+} from "@/lib/otp";
+import { uploadDonorMedia } from "@/lib/donorMedia";
+import { Link, useNavigate } from "react-router-dom";
+
+type MediaKind = "photo" | "proof";
+
+function MediaPickers({
+  kind,
+  busy,
+  onPick,
+}: {
+  kind: MediaKind;
+  busy: boolean;
+  onPick: (kind: MediaKind, file: File | null) => void;
+}) {
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
+  const accept =
+    kind === "photo"
+      ? "image/jpeg,image/png,image/webp"
+      : "image/jpeg,image/png,image/webp,application/pdf";
+
+  return (
+    <div className="media-pick-row">
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(e) => {
+          onPick(kind, e.target.files?.[0] || null);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept={accept}
+        hidden
+        onChange={(e) => {
+          onPick(kind, e.target.files?.[0] || null);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        className="btn btn-secondary"
+        disabled={busy}
+        onClick={() => cameraRef.current?.click()}
+      >
+        {busy ? "Uploading…" : "Take photo"}
+      </button>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        disabled={busy}
+        onClick={() => galleryRef.current?.click()}
+      >
+        {busy ? "Uploading…" : kind === "proof" ? "Gallery / PDF" : "Choose from gallery"}
+      </button>
+    </div>
+  );
+}
+
+function Inner() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [uploading, setUploading] = useState<"photo" | "proof" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<RakhthaProfile | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("Hyderabad");
+  const [area, setArea] = useState("");
+  const [bloodGroup, setBloodGroup] = useState<BloodGroup | "">("");
+  const [available, setAvailable] = useState(true);
+  const [lastDonation, setLastDonation] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [commitment, setCommitment] = useState(false);
+  const [proofAttest, setProofAttest] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpTicket, setOtpTicket] = useState<string | null>(null);
+  const [otpTargetPhone, setOtpTargetPhone] = useState<string | null>(null);
+  const [otpChannelUsed, setOtpChannelUsed] = useState<"voice" | "sms" | null>(null);
+  const [otpUsedBackup, setOtpUsedBackup] = useState(false);
+  const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
+  const [verifiedPhone, setVerifiedPhone] = useState<string | null>(null);
+  const [otpReady, setOtpReady] = useState<boolean | null>(null);
+  const [smsProviderReady, setSmsProviderReady] = useState(false);
+
+  const phoneVerified =
+    Boolean(verifiedToken && verifiedPhone) ||
+    Boolean(profile?.phone_verified_at && profile.phone_e164 === normalizePhoneInput(phone));
+
+  useEffect(() => {
+    if (!user) return;
+    void (async () => {
+      try {
+        const p = await getMyProfile(user.id);
+        setProfile(p);
+        setFullName(p?.full_name || user.name);
+        setPhone(p?.phone || "");
+        setCity(p?.city || "Hyderabad");
+        setArea(p?.area || "");
+        setBloodGroup((p?.blood_group as BloodGroup) || "");
+        setAvailable(p?.available ?? true);
+        setLastDonation(p?.last_donation_date || "");
+        setConsent(Boolean(p?.emergency_consent));
+        setPhotoUrl(p?.photo_url || null);
+        setProofUrl(p?.blood_proof_url || null);
+        setProofAttest(Boolean(p?.blood_attested_at));
+        if (p?.phone_verified_at && p.phone_e164) {
+          setVerifiedPhone(p.phone_e164);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load profile");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [user]);
+
+  useEffect(() => {
+    void fetchOtpStatus().then((s) => {
+      setOtpReady(s.twilioOtp);
+      setSmsProviderReady(s.fast2sms);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!otpSent || phoneVerified) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [otpSent, phoneVerified]);
+
+  async function onSendOtp(channel: OtpChannel = "auto") {
+    setError(null);
+    setMessage(null);
+    setOtpSending(true);
+    setOtpUsedBackup(false);
+    try {
+      if (!phone.trim()) throw new Error("Enter your phone number first.");
+      const result = await sendOtp(phone, channel);
+      if (!result.ok || !result.otpTicket) {
+        throw new Error(result.error || "Could not send OTP");
+      }
+      setOtpSent(true);
+      setVerifiedToken(null);
+      setOtpTicket(result.otpTicket);
+      setOtpCode(""); // never auto-fill — user hears/reads code on their phone
+      setOtpTargetPhone(result.phone || normalizePhoneInput(phone));
+      setOtpChannelUsed(result.channel ?? null);
+      setOtpUsedBackup(Boolean(result.usedBackup));
+      if (result.usedBackup && result.voiceSent) {
+        setMessage(
+          `SMS blocked — Twilio voice backup calling ${maskPhoneDisplay(result.phone || phone)}. Answer, listen for 6 digits, type them below.`,
+        );
+      } else if (result.channel === "voice" || result.voiceSent) {
+        setMessage(
+          `Calling ${maskPhoneDisplay(result.phone || phone)}. Answer, listen for 6 digits, type them below.`,
+        );
+      } else {
+        setMessage(
+          `OTP SMS sent to ${maskPhoneDisplay(result.phone || phone)}. Open Messages, type the 6-digit code below.`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send OTP");
+      setOtpSent(false);
+    } finally {
+      setOtpSending(false);
+    }
+  }
+
+  async function onVerifyOtp() {
+    setError(null);
+    setMessage(null);
+    setOtpVerifying(true);
+    try {
+      if (!otpTicket) throw new Error("Request a call or SMS first, then enter the code.");
+      if (otpCode.length !== 6) throw new Error("Enter the 6-digit code from your phone.");
+      const result = await verifyOtp(phone, otpCode, otpTicket);
+      if (!result.ok || !result.verifiedToken) {
+        throw new Error(result.error || "Could not verify OTP");
+      }
+      setVerifiedToken(result.verifiedToken);
+      setVerifiedPhone(result.phone || normalizePhoneInput(phone));
+      setOtpCode("");
+      setMessage("Phone verified. Only someone with that handset could enter the code. Continue, then save.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify OTP");
+    } finally {
+      setOtpVerifying(false);
+    }
+  }
+
+  async function onUpload(kind: "photo" | "proof", file: File | null) {
+    if (!user || !file) return;
+    setUploading(kind);
+    setError(null);
+    try {
+      const url = await uploadDonorMedia(user.id, kind, file);
+      if (kind === "photo") setPhotoUrl(url);
+      else setProofUrl(url);
+      setMessage(kind === "photo" ? "Photo uploaded." : "Blood-group proof uploaded.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      if (!bloodGroup) throw new Error("Select your blood group.");
+      if (!phone.trim()) throw new Error("Phone is required.");
+      if (!consent) {
+        throw new Error(
+          "Please tick the sharing consent box — your details may be shared for emergency matching and alerts.",
+        );
+      }
+      if (!commitment) {
+        throw new Error("Please confirm you will be reachable for this blood group emergencies.");
+      }
+      if (!proofUrl) {
+        throw new Error("Upload blood-group proof (donor card / donation slip / lab report).");
+      }
+      if (!proofAttest) {
+        throw new Error("Confirm that your uploaded proof shows this blood group.");
+      }
+      if (!photoUrl) {
+        throw new Error("Add your photo (camera or gallery) — it appears on Our Donors.");
+      }
+
+      const e164 = normalizePhoneInput(phone);
+      const alreadySavedVerified =
+        Boolean(profile?.phone_verified_at) && profile?.phone_e164 === e164;
+
+      if (!alreadySavedVerified) {
+        if (!verifiedToken || !verifiedPhone || verifiedPhone !== e164) {
+          throw new Error("Verify OTP for this phone before saving as a donor.");
+        }
+        const confirm = await confirmOtpSession(e164, verifiedToken);
+        if (!confirm.ok) throw new Error(confirm.error || "OTP session expired. Verify again.");
+      }
+
+      const verifiedAt = new Date().toISOString();
+      await upsertMyProfile(user.id, {
+        full_name: fullName.trim() || user.name,
+        email: user.email,
+        phone: phone.trim(),
+        phone_e164: e164,
+        phone_verified_at: alreadySavedVerified
+          ? profile?.phone_verified_at || verifiedAt
+          : verifiedAt,
+        city: city.trim() || "Hyderabad",
+        area: area.trim() || null,
+        blood_group: bloodGroup,
+        is_donor: true,
+        available,
+        last_donation_date: lastDonation || null,
+        emergency_consent: true,
+        consent_accepted_at: new Date().toISOString(),
+        photo_url: photoUrl,
+        blood_proof_url: proofUrl,
+        blood_proof_status: "uploaded",
+        blood_attested_at: verifiedAt,
+        show_on_donor_wall: true,
+      });
+      setVerifiedToken(null);
+      const nextProfile: RakhthaProfile = {
+        id: user.id,
+        full_name: fullName.trim() || user.name,
+        email: user.email,
+        phone: phone.trim(),
+        phone_e164: e164,
+        phone_verified_at: verifiedAt,
+        city: city.trim() || "Hyderabad",
+        area: area.trim() || null,
+        blood_group: bloodGroup,
+        is_donor: true,
+        available,
+        last_donation_date: lastDonation || null,
+        emergency_consent: true,
+        photo_url: photoUrl,
+        blood_proof_url: proofUrl,
+        blood_proof_status: "uploaded",
+        blood_attested_at: verifiedAt,
+        show_on_donor_wall: true,
+      };
+      setProfile(nextProfile);
+      try {
+        sessionStorage.setItem(
+          "rakhtha_donor_wall_ping",
+          JSON.stringify({ at: Date.now(), id: user.id }),
+        );
+      } catch {
+        // ignore
+      }
+      setMessage("Saved — your photo & details are live on Our Donors…");
+      window.setTimeout(() => navigate("/donors", { state: { justJoined: true } }), 500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="shell section">
+        <p className="muted">Loading donor profile…</p>
+      </div>
+    );
+  }
+
+  const canSave =
+    consent &&
+    commitment &&
+    proofAttest &&
+    phoneVerified &&
+    Boolean(bloodGroup) &&
+    Boolean(proofUrl) &&
+    Boolean(photoUrl);
+
+  return (
+    <div className="shell section">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <p className="eyebrow">Donor</p>
+        <h1 style={{ margin: "0 0 0.35rem", fontSize: "clamp(1.9rem,4vw,2.7rem)", fontFamily: "var(--display)" }}>
+          Be ready to help
+        </h1>
+        <p className="section-lede">
+          Register as a donor. Verify your phone with OTP — no skip. Only verified phones
+          get emergency alerts for your blood group.
+        </p>
+
+        <div className="dash-grid donor-layout">
+        <form className="panel form-grid" onSubmit={(e) => void onSave(e)}>
+          {otpReady === false && (
+            <div className="alert alert-warn">
+              OTP Twilio is off. Add TWILIO_OTP_* to .env.local and restart npm run dev.
+            </div>
+          )}
+          {otpReady && (
+            <div className="alert alert-info">
+              Twilio OTP: tries <strong>SMS first</strong>, then automatic <strong>voice-call
+              backup</strong> if SMS is blocked (trial / unverified number). Code is never shown
+              here.
+              {smsProviderReady ? " Fast2SMS also configured for SMS." : ""}
+            </div>
+          )}
+
+          <label>
+            Full name
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          </label>
+          <label>
+            Phone (WhatsApp)
+            <input
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setVerifiedToken(null);
+                setVerifiedPhone(null);
+                setOtpSent(false);
+                setOtpCode("");
+                setOtpTicket(null);
+                setOtpTargetPhone(null);
+                setOtpChannelUsed(null);
+                setOtpUsedBackup(false);
+              }}
+              required
+              placeholder="8309030400"
+            />
+          </label>
+          <div className="cta-row" style={{ marginTop: "-0.35rem", flexWrap: "wrap" }}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={otpSending || !phone.trim() || phoneVerified}
+              onClick={() => void onSendOtp("auto")}
+            >
+              {otpSending ? "Sending OTP…" : "Send OTP (SMS → voice backup)"}
+            </button>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={otpSending || !phone.trim() || phoneVerified}
+              onClick={() => void onSendOtp("voice")}
+            >
+              Voice only
+            </button>
+            {phoneVerified && <span className="badge badge-ok">Phone verified</span>}
+          </div>
+
+          {!phoneVerified && (
+            <div className="otp-box">
+              <p className="muted" style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>
+                Proof of ownership: SMS or call goes <strong>only to that number</strong>. You type
+                the code from the phone — never shown in the app.
+              </p>
+              {otpSent && otpTargetPhone && (
+                <div className="alert alert-info" style={{ marginBottom: "0.65rem" }}>
+                  {otpChannelUsed === "voice" ? (
+                    <>
+                      {otpUsedBackup ? "SMS blocked → " : ""}
+                      Calling <strong>{maskPhoneDisplay(otpTargetPhone)}</strong>. Answer and listen
+                      for 6 digits.
+                    </>
+                  ) : (
+                    <>
+                      SMS to <strong>{maskPhoneDisplay(otpTargetPhone)}</strong>. Check your
+                      messages for 6 digits.
+                    </>
+                  )}
+                </div>
+              )}
+              <label>
+                Enter 6-digit OTP from your phone
+                <input
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="Type code from call or SMS"
+                  required={!phoneVerified}
+                />
+              </label>
+              <button
+                className="btn btn-primary"
+                type="button"
+                style={{ marginTop: "0.65rem" }}
+                disabled={otpVerifying || otpCode.length !== 6 || !otpTicket}
+                onClick={() => void onVerifyOtp()}
+              >
+                {otpVerifying ? "Verifying…" : "Verify OTP"}
+              </button>
+            </div>
+          )}
+
+          <label>
+            Blood group
+            <select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value as BloodGroup)} required>
+              <option value="">Select</option>
+              {BLOOD_GROUPS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="proof-block">
+            <p className="proof-block-title">Prove this blood group</p>
+            <p className="muted" style={{ margin: "0 0 0.55rem", fontSize: "0.88rem" }}>
+              Use the camera or gallery for your donor card, donation slip, or lab report
+              showing <strong>{bloodGroup || "your group"}</strong>. Hospital still confirms
+              before transfusion — this is your attested proof.
+            </p>
+            <MediaPickers
+              kind="proof"
+              busy={uploading === "proof"}
+              onPick={(k, f) => void onUpload(k, f)}
+            />
+            {proofUrl && (
+              <a className="proof-link" href={proofUrl} target="_blank" rel="noreferrer">
+                View uploaded proof
+              </a>
+            )}
+            <label className="consent-box" style={{ marginTop: "0.65rem" }}>
+              <input
+                type="checkbox"
+                checked={proofAttest}
+                onChange={(e) => setProofAttest(e.target.checked)}
+                required
+                style={{ width: "auto", marginTop: "0.2rem" }}
+              />
+              <span>
+                I confirm this document shows my blood group as{" "}
+                <strong>{bloodGroup || "selected above"}</strong> and is mine.
+              </span>
+            </label>
+          </div>
+
+          <div className="proof-block">
+            <p className="proof-block-title">Your photo for Our Donors</p>
+            <p className="muted" style={{ margin: "0 0 0.55rem", fontSize: "0.88rem" }}>
+              After you save, your <strong>photo, name, area, city, and blood group</strong>{" "}
+              appear on <Link to="/donors">Our Donors</Link>. Phone stays private. Camera or
+              gallery.
+            </p>
+            <MediaPickers
+              kind="photo"
+              busy={uploading === "photo"}
+              onPick={(k, f) => void onUpload(k, f)}
+            />
+            {photoUrl && (
+              <img className="donor-photo-preview" src={photoUrl} alt="Your donor photo" />
+            )}
+            <div className="alert alert-info" style={{ marginTop: "0.65rem" }}>
+              After save you appear on <Link to="/donors">Our Donors</Link> with photo, name,
+              location, and blood group. Phone stays private.
+            </div>
+          </div>
+
+          <div className="two-col">
+            <label>
+              City
+              <input value={city} onChange={(e) => setCity(e.target.value)} required />
+            </label>
+            <label>
+              Area
+              <input value={area} onChange={(e) => setArea(e.target.value)} />
+            </label>
+          </div>
+          <label>
+            Last donation date
+            <input type="date" value={lastDonation} onChange={(e) => setLastDonation(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: "0.65rem" }}>
+            <input
+              type="checkbox"
+              checked={available}
+              onChange={(e) => setAvailable(e.target.checked)}
+              style={{ width: "auto", marginTop: "0.2rem" }}
+            />
+            <span>I am available for emergency requests right now</span>
+          </label>
+          <label className="consent-box">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              required
+              style={{ width: "auto", marginTop: "0.2rem" }}
+            />
+            <span>
+              I accept the terms: Rakhtha Seva may share my name, phone, blood group, and
+              area with emergency requesters and alert channels (WhatsApp / call /
+              in-app notification) when my blood type is needed. I can turn off availability
+              anytime.
+            </span>
+          </label>
+          <label className="consent-box">
+            <input
+              type="checkbox"
+              checked={commitment}
+              onChange={(e) => setCommitment(e.target.checked)}
+              required
+              style={{ width: "auto", marginTop: "0.2rem" }}
+            />
+            <span>
+              I confirm this is my phone and I am willing to be contacted for this blood
+              group in emergencies. I understand I stay listed until I turn off availability.
+            </span>
+          </label>
+          {error && <div className="alert alert-error">{error}</div>}
+          {message && <div className="alert alert-info">{message}</div>}
+          {profile?.is_donor && profile.emergency_consent && profile.phone_verified_at && (
+            <div className="alert alert-warn">
+              You are an OTP-verified donor{profile.blood_group ? ` (${profile.blood_group})` : ""}.
+              Critical needs for your group will notify you in Alerts.
+            </div>
+          )}
+          <button className="btn btn-primary" type="submit" disabled={saving || !canSave}>
+            {saving ? "Saving…" : "Save donor profile"}
+          </button>
+          {!canSave && (
+            <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+              Complete: SMS OTP on your phone → blood-group proof + attest → photo → consents →
+              Save. Then you show on Our Donors.
+            </p>
+          )}
+        </form>
+
+        <aside className="donor-stage" aria-label="Why your registration matters">
+          <div className="donor-stage-glow" aria-hidden />
+          <div className="donor-drop" aria-hidden>
+            <span className="donor-drop-pulse" />
+            <svg viewBox="0 0 80 110" className="donor-drop-svg">
+              <path
+                d="M40 8 C40 8 12 48 12 68 C12 88 24 102 40 102 C56 102 68 88 68 68 C68 48 40 8 40 8 Z"
+                fill="url(#dropGrad)"
+              />
+              <path
+                d="M28 62 Q40 52 52 62 Q40 72 28 62"
+                fill="none"
+                stroke="rgba(255,255,255,0.55)"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              />
+              <defs>
+                <linearGradient id="dropGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fb7185" />
+                  <stop offset="100%" stopColor="#9f1239" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <p className="donor-stage-kicker">One unit. One tomorrow.</p>
+          <h2 className="donor-stage-title">
+            Your blood group is not just a label —
+            <em> it is someone&apos;s chance.</em>
+          </h2>
+          <ol className="donor-stage-steps">
+            <li>
+              <strong>Verify</strong>
+              <span>OTP proves this phone is yours</span>
+            </li>
+            <li>
+              <strong>Match</strong>
+              <span>AI ranks you when your group is needed</span>
+            </li>
+            <li>
+              <strong>Alert</strong>
+              <span>Call · WhatsApp · in-app — minutes matter</span>
+            </li>
+          </ol>
+          <p className="donor-stage-foot">
+            {bloodGroup
+              ? `${bloodGroup} donors like you keep Hyderabad emergencies moving.`
+              : "Pick your blood group on the left — then stand ready."}
+          </p>
+          <Link to="/donors" className="btn btn-secondary" style={{ justifySelf: "start" }}>
+            See Our Donors →
+          </Link>
+        </aside>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+export function DonorPage() {
+  return (
+    <RequireAuth>
+      <Inner />
+    </RequireAuth>
+  );
+}

@@ -1,41 +1,31 @@
-"use client";
-
-import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/components/AuthProvider";
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (!ready) return;
-    if (!user) {
-      const next = encodeURIComponent(pathname || "/dashboard");
-      router.replace(`/login?next=${next}`);
-    }
-  }, [ready, user, router, pathname]);
+  const location = useLocation();
 
   if (!ready) {
     return (
-      <div className="page">
-        <div className="shell">
-          <p className="lede">Starting Praja Rakshak…</p>
-        </div>
+      <div className="shell section">
+        <p className="muted">Loading your session…</p>
       </div>
     );
   }
 
   if (!user) {
-    return (
-      <div className="page">
-        <div className="shell">
-          <p className="lede">Login required. Redirecting…</p>
-        </div>
-      </div>
-    );
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
   }
 
   return <>{children}</>;
+}
+
+/** Optional scroll-to-top on route change for polished feel */
+export function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [pathname]);
+  return null;
 }

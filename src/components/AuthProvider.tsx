@@ -1,5 +1,3 @@
-"use client";
-
 import {
   createContext,
   useCallback,
@@ -14,6 +12,7 @@ import {
   login as loginUser,
   loginAsDemo as loginAsDemoUser,
   logout as logoutUser,
+  markPasswordRecovery,
   register as registerUser,
   requestPasswordReset as requestPasswordResetUser,
 } from "@/lib/auth";
@@ -50,7 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     void boot();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async () => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        markPasswordRecovery();
+        if (typeof window !== "undefined" && !window.location.pathname.includes("/reset-password")) {
+          window.location.assign("/reset-password");
+          return;
+        }
+      }
       const sessionUser = await getSessionUser();
       if (mounted) setUser(sessionUser);
     });

@@ -1,32 +1,19 @@
-# Praja Rakshak — Problem Statement  
-**Idea2Impact Online Hackathon 2026**  
-**Theme:** Theme 1 · Sustainability & Social Impact  
-**State:** Telangana
+# Problem Statement — Rakhtha Seva
 
-## The clear product wrap
-**Praja Rakshak = Clean Up + Speak Up**
-
-1. **Clean Up** — AI looks at a waste photo and tells the correct bin.  
-2. **Speak Up** — AI drafts a civic complaint; citizen files it on an official portal.  
-
-**Promise:** One platform. Two actions. AI prepares. Government portals file.
+**Idea2Impact Offline Hackathon 2026**  
+**Theme:** Theme 2 · AI for Industry & Public Impact (Healthcare)
 
 ## Problem
-Citizens face dirty surroundings (wrong segregation / dumping) and blocked justice (bribes, FIR refusal, corruption) — and often do not know what to write or where to file.
+In emergencies, families waste critical minutes calling random contacts for blood. They do not know who is compatible, who is eligible to donate again, or who is nearby.
 
-## Who it affects
-Households, neighborhoods, and citizens without easy legal help across Telangana.
+## Solution
+**Rakhtha Seva** is an AI blood emergency seva:
+1. Requester enters blood group, hospital, urgency
+2. AI ranks compatible eligible donors
+3. One-tap WhatsApp alert to top matches
 
-## Why existing solutions fail
-Tips apps don’t see waste. Chatbots don’t open official channels. Portals exist, but people freeze at drafting.
-
-## AI approach
-- Vision AI for waste classification (wet / dry / hazardous / e-waste)  
-- Text AI for formal complaint drafting across waste, police bribery, FIR refusal, govt corruption, women safety, and social/legal cases  
-- Redirects to GHMC, TSPCB, ACB, Lokayukta, Police, CPGRAMS, Women Safety channels  
+## Why AI
+Compatibility + eligibility gap + area relevance must be ranked under stress. AI also writes a calm action brief for the family.
 
 ## Impact
-Cleaner communities + stronger civic access through lawful official filing.
-
-## Boundary
-No fake FIR/case IDs. Praja Rakshak drafts and redirects only.
+Faster donor contact. Less panic. Clear next steps — while the hospital blood bank remains the clinical authority.
