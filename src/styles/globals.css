@@ -101,6 +101,42 @@ textarea {
   flex-shrink: 0;
   box-shadow: 0 10px 24px var(--blood-glow);
   background: #1a1c22;
+  overflow: hidden;
+}
+
+svg.brand-mark {
+  object-fit: unset;
+}
+
+.brand-mark-morph {
+  transform-origin: 50% 58%;
+  animation: brandDropBeat 1.55s ease-in-out infinite;
+}
+
+@keyframes brandDropBeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  16% {
+    transform: scale(1.06);
+  }
+  32% {
+    transform: scale(1);
+  }
+  48% {
+    transform: scale(1.035);
+  }
+  64% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark-morph,
+  .heart-morph-veil {
+    animation: none !important;
+  }
 }
 
 .brand-text strong {
@@ -302,6 +338,29 @@ textarea {
   transition: opacity 0.08s linear, transform 0.08s linear;
 }
 
+.heart-morph-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(255, 255, 255, 0.2), transparent 62%),
+    radial-gradient(circle at 30% 80%, rgba(190, 18, 60, 0.12), transparent 45%);
+  animation: heartMorphBreath 3.2s ease-in-out infinite;
+}
+
+@keyframes heartMorphBreath {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
 .heart-webgl {
   position: absolute;
   inset: 0 0 2.4rem 0;
@@ -341,11 +400,10 @@ textarea {
 .heart-ecg-line {
   fill: none;
   stroke: #e11d48;
-  stroke-width: 1.6;
+  stroke-width: 1.85;
   stroke-linejoin: round;
   stroke-linecap: round;
-  stroke-dasharray: 220;
-  animation: ecgDraw 1.25s linear infinite;
+  filter: drop-shadow(0 0 4px rgba(225, 29, 72, 0.45));
 }
 
 .heart-credit {
@@ -362,11 +420,6 @@ textarea {
   pointer-events: none;
 }
 
-@keyframes ecgDraw {
-  to {
-    stroke-dashoffset: -220;
-  }
-}
 
 .eyebrow {
   display: inline-flex;

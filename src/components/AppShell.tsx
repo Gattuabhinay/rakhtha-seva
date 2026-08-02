@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/components/AuthProvider";
+import { BrandMark } from "@/components/BrandMark";
 import { ButtonLink } from "@/components/ui";
 import { NotificationBell } from "@/components/NotificationBell";
 import { BRAND } from "@/lib/brand";
@@ -12,14 +13,7 @@ export function AppShell() {
       <header className="site-header">
         <div className="shell header-inner">
           <NavLink to={user ? "/dashboard" : "/"} className="brand" end>
-            <img
-              className="brand-mark"
-              src="/logo.png"
-              alt=""
-              width={44}
-              height={44}
-              decoding="async"
-            />
+            <BrandMark />
             <span className="brand-text">
               <strong>{BRAND.name}</strong>
               <span>{user ? user.name : BRAND.tagline}</span>

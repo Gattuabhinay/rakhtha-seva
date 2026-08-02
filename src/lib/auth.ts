@@ -76,7 +76,10 @@ export async function getSessionUser(): Promise<AuthUser | null> {
 export function friendlyAuthError(message: string): string {
   const m = message.toLowerCase();
   if (m.includes("rate limit") || m.includes("over_email_send_rate_limit")) {
-    return "Email rate limit hit. Wait a bit, try Login, or use the Demo account. For judging: turn OFF Confirm email in Supabase Auth.";
+    return "Email rate limit hit. Wait a bit, try Login, or use the Demo account.";
+  }
+  if (m.includes("email not confirmed") || m.includes("email_not_confirmed")) {
+    return "Confirm your email first — open the Supabase confirmation link we sent, then Login.";
   }
   if (m.includes("user already registered") || m.includes("already been registered")) {
     return "This email already has an account. Switch to Login, or use Forgot password.";
@@ -223,11 +226,15 @@ export async function loginAsDemo(): Promise<AuthUser> {
   return user;
 }
 
+export type RegisterResult =
+  | { status: "signed_in"; user: AuthUser }
+  | { status: "confirm_email"; email: string };
+
 export async function register(
   name: string,
   email: string,
   password: string,
-): Promise<AuthUser> {
+): Promise<RegisterResult> {
   const cleanName = name.trim();
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanName || !cleanEmail || password.length < 6) {
@@ -235,11 +242,14 @@ export async function register(
   }
 
   const supabase = getSupabaseBrowserClient();
+  const emailRedirectTo =
+    typeof window !== "undefined" ? `${window.location.origin}/login` : undefined;
   const { data, error } = await supabase.auth.signUp({
     email: cleanEmail,
     password,
     options: {
       data: { full_name: cleanName },
+      emailRedirectTo,
     },
   });
 
@@ -255,15 +265,14 @@ export async function register(
     city: "Hyderabad",
   });
 
+  // Supabase "Confirm email" ON → no session until the user opens the email link.
   if (!data.session) {
-    throw new Error(
-      "Account created. Confirm your email (if required), then Login — or disable Confirm email in Supabase for instant signup.",
-    );
+    return { status: "confirm_email", email: cleanEmail };
   }
 
   const user = await getSessionUser();
   if (!user) throw new Error("Account created but session was not found.");
-  return user;
+  return { status: "signed_in", user };
 }
 
 export async function logout() {

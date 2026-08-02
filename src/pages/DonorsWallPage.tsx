@@ -110,8 +110,8 @@ export function DonorsWallPage() {
               Be the first on the wall
             </h2>
             <p className="muted">
-              Complete Be a donor: OTP → blood-group proof → your photo → Save. You appear
-              here with name, location, and blood type.
+              Complete Be a donor: confirm email → blood-group proof → your photo → Save. You
+              appear here with name, location, and blood type.
             </p>
             <Link to="/donor" className="btn btn-primary">
               Register &amp; appear here

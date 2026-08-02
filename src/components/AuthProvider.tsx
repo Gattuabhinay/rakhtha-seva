@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   type AuthUser,
+  type RegisterResult,
   getSessionUser,
   login as loginUser,
   loginAsDemo as loginAsDemoUser,
@@ -23,7 +24,7 @@ type AuthContextValue = {
   ready: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginAsDemo: () => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<RegisterResult>;
   requestPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -77,7 +78,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
-      setUser(await registerUser(name, email, password));
+      const result = await registerUser(name, email, password);
+      if (result.status === "signed_in") setUser(result.user);
+      return result;
     },
     [],
   );

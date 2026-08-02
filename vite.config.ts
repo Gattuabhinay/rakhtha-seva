@@ -5,7 +5,6 @@ import path from "node:path";
 import { matchBriefApiPlugin } from "./vite.matchBrief";
 import { elevenLabsSpeakPlugin } from "./vite.elevenLabs";
 import { alertsApiPlugin } from "./vite.alerts";
-import { otpApiPlugin } from "./vite.otp";
 
 export default defineConfig({
   plugins: [
@@ -14,7 +13,6 @@ export default defineConfig({
     matchBriefApiPlugin(),
     elevenLabsSpeakPlugin(),
     alertsApiPlugin(),
-    otpApiPlugin(),
   ],
   envPrefix: ["VITE_", "NEXT_PUBLIC_"],
   resolve: {

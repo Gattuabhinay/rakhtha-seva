@@ -77,8 +77,8 @@ async function loadDonors(): Promise<RankableDonor[]> {
 
     for (const p of profiles ?? []) {
       if (!p.blood_group || !p.phone) continue;
-      // Emergency blast: OTP-verified + blood-group proof attested
-      if (!p.phone_verified_at || !p.blood_attested_at) continue;
+      // Emergency blast: email-confirmed account (logged-in donor) + blood-group proof
+      if (!p.blood_attested_at) continue;
       donors.push({
         id: p.id,
         full_name: p.full_name,
@@ -88,7 +88,7 @@ async function loadDonors(): Promise<RankableDonor[]> {
         blood_group: p.blood_group,
         last_donation_date: p.last_donation_date,
         available: p.available,
-        phone_verified: true,
+        phone_verified: Boolean(p.phone_verified_at),
         source: "profile",
       });
     }

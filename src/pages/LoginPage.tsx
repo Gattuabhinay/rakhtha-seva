@@ -67,8 +67,23 @@ export function LoginPage() {
         );
         return;
       }
-      if (mode === "login") await login(email, password);
-      else await register(name, email, password);
+      if (mode === "login") {
+        await login(email, password);
+        navigate(nextPath.startsWith("/") ? nextPath : "/dashboard");
+        return;
+      }
+      const result = await register(name, email, password);
+      if (result.status === "confirm_email") {
+        const confirmedEmail = result.email;
+        setMode("login");
+        setError(null);
+        setResetSentTo(null);
+        setEmail(confirmedEmail);
+        setInfo(
+          `Account created. Open the confirmation email Supabase sent to ${confirmedEmail}, then Login here. No SMS OTP — email confirmation is your verification.`,
+        );
+        return;
+      }
       navigate(nextPath.startsWith("/") ? nextPath : "/dashboard");
     } catch (err) {
       setError(friendlyAuthError(err instanceof Error ? err.message : "Could not continue"));
@@ -102,7 +117,9 @@ export function LoginPage() {
             <p className="muted" style={{ marginBottom: "1rem" }}>
               {mode === "forgot"
                 ? "We’ll email you a Supabase reset link. Open it to choose a new password — then login again."
-                : "Secure login with Supabase. Use the demo account to try an emergency match."}
+                : mode === "register"
+                  ? "Create an account — Supabase emails a confirmation link. Confirm that email, then Login. No phone OTP."
+                  : "Secure login with Supabase email. Confirm your email after register, then sign in."}
             </p>
 
             {mode !== "forgot" && (
@@ -257,15 +274,15 @@ export function LoginPage() {
               <>
                 <li>
                   <strong>Register</strong>
-                  <span>Real email → donor wall + emergency requests</span>
+                  <span>Supabase sends a confirmation email</span>
                 </li>
                 <li>
-                  <strong>Forgot?</strong>
-                  <span>Reset via Supabase email — never share passwords</span>
+                  <strong>Confirm</strong>
+                  <span>Open the link — that proves the email is yours</span>
                 </li>
                 <li>
-                  <strong>Demo</strong>
-                  <span>Judges can enter without creating an account</span>
+                  <strong>Login</strong>
+                  <span>Then register as a donor (phone is contact only)</span>
                 </li>
               </>
             )}

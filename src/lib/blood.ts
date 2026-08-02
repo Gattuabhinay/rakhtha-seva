@@ -102,9 +102,9 @@ export function rankDonors(input: {
       if (!eligible) {
         reason = `Too soon to donate again (${days ?? 0} days since last donation; need ${MIN_DONATION_GAP_DAYS}+).`;
       } else if (d.blood_group === input.needed) {
-        reason = `Exact ${d.blood_group} match in ${d.area || d.city}${d.phone_verified ? " · OTP-verified phone" : ""}.`;
+        reason = `Exact ${d.blood_group} match in ${d.area || d.city}${d.phone_verified ? " · registered donor" : ""}.`;
       } else {
-        reason = `Compatible ${d.blood_group} donor for patient ${input.needed} · ${d.area || d.city}${d.phone_verified ? " · OTP-verified phone" : ""}.`;
+        reason = `Compatible ${d.blood_group} donor for patient ${input.needed} · ${d.area || d.city}${d.phone_verified ? " · registered donor" : ""}.`;
       }
 
       return { ...d, rank_score: Math.round(rank_score), eligible, reason };

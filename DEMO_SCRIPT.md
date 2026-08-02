@@ -7,7 +7,8 @@
 1. Home — Theme 2 badge + stack (OpenRouter / ElevenLabs / Twilio / Resend)
 2. Login: `demo@rakhthaseva.in` / `RakhthaSeva@2026`
 3. Dashboard → **Emergency request**
-4. Donor path once: **Be a donor** → **Get OTP** → verify → upload **blood-group proof** + attest → photo + **Our Donors** tick → save  
+4. Donor path once: Register → **confirm Supabase email** → Login → **Be a donor** → phone (contact) → blood-group proof + attest → photo → save  
+
 4b. Open **Our Donors** — photo, location, blood type (phone private). Only attested donors get emergency alerts.
 4b. Tap **Fill judge demo (O− critical)** → confirm share terms tick → **Find donors + AI brief**
 4c. Header **Alerts** bell shows: “Your blood group is needed…” (demo + consented donors)
@@ -25,7 +26,8 @@
 
 ## Keys that make judges gasp
 - **OpenRouter:** admin key in `.env.local` by default; user may paste own key in Profile (optional override)
-- **Admin only:** Twilio voice/OTP, ElevenLabs Listen, Resend email  
+- **Admin only:** Twilio voice blast, ElevenLabs Listen, Resend email  
+
   Restart `npm run dev` after changing admin `.env.local` keys.
 
 Sidebar chips show **ready / off** so you never fake a channel.
