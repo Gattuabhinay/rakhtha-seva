@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/components/AuthProvider";
 import { getMyProfile, upsertMyProfile } from "@/lib/auth";
+import { normalizePhoneInput, maskPhoneDisplay } from "@/lib/phone";
 import { UserKeysPanel } from "@/components/UserKeysPanel";
 
 function Inner() {
@@ -37,13 +38,17 @@ function Inner() {
     setError(null);
     setMessage(null);
     try {
+      const trimmed = phone.trim();
+      if (!trimmed) throw new Error("Phone is required for Twilio voice alerts.");
+      const e164 = normalizePhoneInput(trimmed);
       await upsertMyProfile(user.id, {
         full_name: fullName.trim(),
         email: user.email,
-        phone: phone.trim() || null,
+        phone: trimmed,
+        phone_e164: e164,
         city: city.trim() || "Hyderabad",
       });
-      setMessage("Profile updated.");
+      setMessage(`Profile updated. Twilio will call ${maskPhoneDisplay(e164)}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save");
     } finally {
@@ -59,8 +64,8 @@ function Inner() {
           Your Rakhtha Seva profile
         </h1>
         <p className="section-lede">
-          Account email is managed by Supabase Auth. AI WhatsApp/match text uses the admin
-          OpenRouter key unless you paste your own below. Twilio voice calls use admin keys only.
+          Account email is managed by Supabase Auth. Add your mobile here — Twilio calls
+          this number on emergency alerts (must match Twilio Verified Caller IDs on trial).
         </p>
         <form className="panel form-grid" onSubmit={(e) => void onSave(e)} style={{ maxWidth: 520 }}>
           <label>
@@ -72,8 +77,14 @@ function Inner() {
             <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
           </label>
           <label>
-            Phone
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            Mobile (Twilio calls this number)
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              placeholder="8309030400"
+              inputMode="tel"
+            />
           </label>
           <label>
             City

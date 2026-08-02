@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -9,6 +9,7 @@ import { createEmergencyRequest } from "@/lib/requests";
 import { getMyProfile } from "@/lib/auth";
 import { waMeLink, whatsappAlertMessage, type RankedDonor } from "@/lib/blood";
 import { fetchAlertStatus, placeAutoCall, telLink, type AlertStatus } from "@/lib/alerts";
+import { maskPhoneDisplay, normalizePhoneInput } from "@/lib/phone";
 import { ALERT_LANGS, buildCallScript, type AlertLang } from "@/lib/voiceLocales";
 import { openMapsLink, type RankedBloodBank } from "@/lib/bloodBanks";
 
@@ -52,12 +53,26 @@ function Inner() {
     void fetchAlertStatus().then(setAlertStatus);
   }, []);
 
-  useEffect(() => {
+  const loadMyPhone = useCallback(async () => {
     if (!user) return;
-    void getMyProfile(user.id).then((p) => {
-      setMyPhone(p?.phone_e164 || p?.phone || null);
-    });
+    const p = await getMyProfile(user.id);
+    const next = p?.phone_e164 || (p?.phone ? normalizePhoneInput(p.phone) : null);
+    setMyPhone(next);
   }, [user]);
+
+  useEffect(() => {
+    void loadMyPhone();
+  }, [loadMyPhone]);
+
+  useEffect(() => {
+    const refresh = () => void loadMyPhone();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadMyPhone]);
 
   const eligible = useMemo(() => matches.filter((m) => m.eligible), [matches]);
   const topDonor = eligible[0] ?? null;
@@ -92,7 +107,11 @@ function Inner() {
   }
 
   async function onCallMyPhone() {
-    if (!myPhone?.trim()) {
+    if (!user) return;
+    const p = await getMyProfile(user.id);
+    const target = p?.phone_e164 || (p?.phone ? normalizePhoneInput(p.phone) : null);
+    setMyPhone(target);
+    if (!target?.trim()) {
       setChannel(
         "call",
         "error",
@@ -100,9 +119,9 @@ function Inner() {
       );
       return;
     }
-    setChannel("call", "running", `Calling your registered number…`);
+    setChannel("call", "running", `Calling ${maskPhoneDisplay(target)}…`);
     const result = await placeAutoCall({
-      toPhone: myPhone,
+      toPhone: target,
       message: blastVoiceLine(),
       lang: alertLang,
     });
@@ -110,10 +129,10 @@ function Inner() {
       setChannel(
         "call",
         "done",
-        `Twilio called your phone (${alertLang === "hi" ? "Hindi" : "English"}). Add it under Twilio Verified Caller IDs if trial blocks.`,
+        `Twilio called ${maskPhoneDisplay(target)} (${alertLang === "hi" ? "Hindi" : "English"}).`,
       );
     } else if (result.configured === false) {
-      window.location.href = telLink(myPhone);
+      window.location.href = telLink(target);
       setChannel("call", "error", "Twilio keys missing — opened phone dialer instead.");
     } else {
       setChannel(
@@ -375,7 +394,9 @@ function Inner() {
                   <strong>Fire the {bloodGroup} alert</strong>
                   <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>
                     WhatsApp to top donor → Twilio calls{" "}
-                    <strong>{myPhone ? "your registered phone" : "your phone (add in Profile)"}</strong>.
+                    <strong>
+                      {myPhone ? maskPhoneDisplay(myPhone) : "your phone (add in Profile)"}
+                    </strong>.
                     {eligible.length
                       ? ` ${eligible.length} eligible ${bloodGroup} match${eligible.length === 1 ? "" : "es"} ranked.`
                       : " No eligible donor yet."}
@@ -530,21 +551,6 @@ function Inner() {
                         <a className="btn btn-secondary" href={telLink(m.phone)}>
                           Dial
                         </a>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() =>
-                            void placeAutoCall({
-                              toPhone: m.phone,
-                              message: blastVoiceLine(),
-                              lang: alertLang,
-                            }).then((r) => {
-                              if (!r.ok && r.configured === false) window.location.href = telLink(m.phone);
-                            })
-                          }
-                        >
-                          Auto-call
-                        </Button>
                       </div>
                     )}
                   </article>
