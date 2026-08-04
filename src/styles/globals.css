@@ -1166,6 +1166,28 @@ textarea:focus {
   padding: 0.55rem 0.85rem;
 }
 
+.media-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+label.btn.btn-secondary {
+  cursor: pointer;
+  margin: 0;
+}
+
+label.btn.btn-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .camera-modal {
   position: fixed;
   inset: 0;

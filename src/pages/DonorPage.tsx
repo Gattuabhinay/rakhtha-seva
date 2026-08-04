@@ -22,22 +22,25 @@ function MediaPickers({
 }) {
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const accept =
-    kind === "photo"
-      ? "image/jpeg,image/png,image/webp"
-      : "image/jpeg,image/png,image/webp,application/pdf";
+  const inputId = `donor-gallery-${kind}`;
+  // image/* required for iOS/Android gallery (HEIC, empty MIME, etc.)
+  const galleryAccept = kind === "photo" ? "image/*" : "image/*,application/pdf,.pdf";
+
+  function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (file) onPick(kind, file);
+  }
 
   return (
     <div className="media-pick-row">
       <input
+        id={inputId}
         ref={galleryRef}
         type="file"
-        accept={accept}
-        hidden
-        onChange={(e) => {
-          onPick(kind, e.target.files?.[0] || null);
-          e.target.value = "";
-        }}
+        accept={galleryAccept}
+        className="media-file-input"
+        onChange={onGalleryChange}
       />
       <button
         type="button"
@@ -47,14 +50,9 @@ function MediaPickers({
       >
         {busy ? "Uploading…" : "Open camera"}
       </button>
-      <button
-        type="button"
-        className="btn btn-secondary"
-        disabled={busy}
-        onClick={() => galleryRef.current?.click()}
-      >
+      <label htmlFor={inputId} className={`btn btn-secondary${busy ? " btn-disabled" : ""}`}>
         {busy ? "Uploading…" : kind === "proof" ? "Gallery / PDF" : "Choose from gallery"}
-      </button>
+      </label>
       <CameraCapture
         open={cameraOpen}
         title={kind === "photo" ? "Donor photo — camera" : "Blood-group proof — camera"}

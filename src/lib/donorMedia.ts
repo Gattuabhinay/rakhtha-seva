@@ -23,43 +23,66 @@ function extFromFile(file: File): string {
   return "jpg";
 }
 
-/** Center-square crop so wall cards never stretch from tall camera shots. */
+function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  return /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(file.name);
+}
+
+function mimeForUpload(file: File, kind: "photo" | "proof"): string {
+  if (file.type) return file.type;
+  if (kind === "photo" || isImageFile(file)) return "image/jpeg";
+  if (file.name.toLowerCase().endsWith(".pdf")) return "application/pdf";
+  return "application/octet-stream";
+}
+
+/** Center-square crop — works on mobile gallery (HEIC, empty MIME). */
 async function cropImageToSquare(file: File, size = 720): Promise<File> {
-  if (!file.type.startsWith("image/") || typeof createImageBitmap !== "function") {
-    return file;
+  if (!isImageFile(file)) return file;
+
+  const drawToSquare = async (source: CanvasImageSource, w: number, h: number) => {
+    const side = Math.min(w, h);
+    const sx = Math.floor((w - side) / 2);
+    const sy = Math.floor((h - side) * 0.18);
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(source, sx, sy, side, side, 0, 0, size, size);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.9),
+    );
+    if (!blob) return file;
+    const base = file.name.replace(/\.[^.]+$/, "") || "photo";
+    return new File([blob], `${base}-square.jpg`, {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  };
+
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      try {
+        return await drawToSquare(bitmap, bitmap.width, bitmap.height);
+      } finally {
+        bitmap.close();
+      }
+    } catch {
+      // HEIC / some Android gallery formats — fall through
+    }
   }
 
   try {
-    const bitmap = await createImageBitmap(file);
-    try {
-      const side = Math.min(bitmap.width, bitmap.height);
-      const sx = Math.floor((bitmap.width - side) / 2);
-      // Slight top bias so faces stay in frame on tall phone photos.
-      const sy = Math.floor((bitmap.height - side) * 0.18);
-
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return file;
-
-      ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size);
-
-      const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, mime, 0.9),
-      );
-      if (!blob) return file;
-
-      const base = file.name.replace(/\.[^.]+$/, "") || "photo";
-      const ext = mime === "image/png" ? "png" : "jpg";
-      return new File([blob], `${base}-square.${ext}`, {
-        type: mime,
-        lastModified: Date.now(),
-      });
-    } finally {
-      bitmap.close();
-    }
+    const url = URL.createObjectURL(file);
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+    URL.revokeObjectURL(url);
+    return await drawToSquare(img, img.naturalWidth, img.naturalHeight);
   } catch {
     return file;
   }
@@ -78,30 +101,29 @@ export async function uploadDonorMedia(
   if (userId.startsWith("demo-")) {
     throw new Error("Demo account cannot upload. Use a real registered login.");
   }
-  if (file.size > 5 * 1024 * 1024) {
-    throw new Error("File must be under 5 MB.");
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("File must be under 8 MB.");
   }
-  const okTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
-  if (kind === "photo" && file.type === "application/pdf") {
-    throw new Error("Profile photo must be an image (JPG/PNG/WebP).");
-  }
-  if (!okTypes.includes(file.type)) {
-    throw new Error("Use JPG, PNG, WebP, or PDF (proof only).");
+  if (kind === "photo") {
+    if (!isImageFile(file)) {
+      throw new Error("Profile photo must be an image from camera or gallery.");
+    }
+  } else if (!isImageFile(file) && file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    throw new Error("Use a photo from gallery or a PDF for proof.");
   }
 
   const uploadFile =
-    kind === "photo" && file.type.startsWith("image/")
-      ? await cropImageToSquare(file)
-      : file;
+    kind === "photo" && isImageFile(file) ? await cropImageToSquare(file) : file;
 
   const supabase = getSupabaseBrowserClient();
   const ext = extFromFile(uploadFile);
   const path = `${userId}/${kind}-${Date.now()}.${ext}`;
+  const contentType = mimeForUpload(uploadFile, kind);
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, uploadFile, {
     cacheControl: "3600",
     upsert: true,
-    contentType: uploadFile.type,
+    contentType,
   });
   if (error) throw new Error(error.message);
 
