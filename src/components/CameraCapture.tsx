@@ -1,82 +1,61 @@
 import { useEffect, useRef, useState } from "react";
 
+type Facing = "user" | "environment";
+
 type Props = {
   open: boolean;
   title?: string;
-  facingMode?: "user" | "environment";
+  stream: MediaStream | null;
+  facing: Facing;
   onClose: () => void;
   onCapture: (file: File) => void;
+  onFlip: () => void;
+  error?: string | null;
 };
 
-/** Live camera modal — capture → JPEG file for donor photo / proof. */
+/** Live camera modal — stream must be requested on button tap (browser Allow prompt). */
 export function CameraCapture({
   open,
   title = "Take photo",
-  facingMode = "user",
+  stream,
+  facing,
   onClose,
   onCapture,
+  onFlip,
+  error = null,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [facing, setFacing] = useState<"user" | "environment">(facingMode);
 
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setError(null);
-    setReady(false);
-
-    async function start() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError("Camera not supported in this browser. Use Choose from gallery instead.");
-        return;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { ideal: facing },
-            width: { ideal: 1280 },
-            height: { ideal: 1280 },
-          },
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (video) {
-          video.srcObject = stream;
-          await video.play();
-          setReady(true);
-        }
-      } catch {
-        setError(
-          "Camera permission blocked or unavailable. Allow camera access, or use Choose from gallery.",
-        );
-      }
+    if (!open || !stream) {
+      setReady(false);
+      return;
     }
+    const video = videoRef.current;
+    if (!video) return;
 
-    void start();
+    let cancelled = false;
+    setReady(false);
+    video.srcObject = stream;
+
+    void video
+      .play()
+      .then(() => {
+        if (!cancelled) setReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setReady(false);
+      });
 
     return () => {
       cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
+      video.srcObject = null;
+      setReady(false);
     };
-  }, [open, facing]);
-
-  useEffect(() => {
-    setFacing(facingMode);
-  }, [facingMode]);
+  }, [open, stream]);
 
   function stopAndClose() {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
     onClose();
   }
 
@@ -94,7 +73,6 @@ export function CameraCapture({
     canvas.height = 720;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // Mirror selfie horizontally so saved photo matches what the donor saw.
     if (facing === "user") {
       ctx.translate(720, 0);
       ctx.scale(-1, 1);
@@ -108,8 +86,6 @@ export function CameraCapture({
           type: "image/jpeg",
           lastModified: Date.now(),
         });
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
         onCapture(file);
         onClose();
       },
@@ -139,7 +115,9 @@ export function CameraCapture({
             className={`camera-video${facing === "user" ? " camera-video-mirror" : ""}`}
           />
           <div className="camera-frame" aria-hidden />
-          {!ready && !error && <p className="camera-status">Starting camera…</p>}
+          {!ready && !error && (
+            <p className="camera-status">Allow camera when your browser asks…</p>
+          )}
           {error && <p className="camera-status camera-status-error">{error}</p>}
         </div>
 
@@ -147,9 +125,7 @@ export function CameraCapture({
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() =>
-              setFacing((f) => (f === "user" ? "environment" : "user"))
-            }
+            onClick={onFlip}
             disabled={Boolean(error)}
           >
             Flip camera
@@ -164,9 +140,27 @@ export function CameraCapture({
           </button>
         </div>
         <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
-          Square frame = how you appear on Our Donors. Center your face, then Capture.
+          Your browser asked to use the camera — tap Allow. Square frame = Our Donors wall.
         </p>
       </div>
     </div>
   );
+}
+
+export async function requestCameraStream(facing: Facing): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Camera not supported. Use Choose from gallery instead.");
+  }
+  return navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: { ideal: facing },
+      width: { ideal: 1280 },
+      height: { ideal: 1280 },
+    },
+  });
+}
+
+export function stopCameraStream(stream: MediaStream | null) {
+  stream?.getTracks().forEach((t) => t.stop());
 }

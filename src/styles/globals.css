@@ -1188,6 +1188,13 @@ label.btn.btn-disabled {
   pointer-events: none;
 }
 
+.camera-permit-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
 .camera-modal {
   position: fixed;
   inset: 0;

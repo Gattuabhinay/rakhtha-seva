@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/components/AuthProvider";
-import { CameraCapture } from "@/components/CameraCapture";
+import { CameraCapture, requestCameraStream, stopCameraStream } from "@/components/CameraCapture";
 import { getMyProfile, upsertMyProfile, type RakhthaProfile } from "@/lib/auth";
 import { BLOOD_GROUPS, type BloodGroup } from "@/lib/brand";
 import { normalizePhoneInput } from "@/lib/phone";
@@ -21,10 +21,60 @@ function MediaPickers({
   onPick: (kind: MediaKind, file: File | null) => void;
 }) {
   const galleryRef = useRef<HTMLInputElement | null>(null);
+  const nativeCameraRef = useRef<HTMLInputElement | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">(
+    kind === "photo" ? "user" : "environment",
+  );
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const inputId = `donor-gallery-${kind}`;
-  // image/* required for iOS/Android gallery (HEIC, empty MIME, etc.)
+  const nativeCameraId = `donor-native-camera-${kind}`;
   const galleryAccept = kind === "photo" ? "image/*" : "image/*,application/pdf,.pdf";
+
+  function closeCamera() {
+    stopCameraStream(cameraStream);
+    setCameraStream(null);
+    setCameraOpen(false);
+    setCameraError(null);
+  }
+
+  async function onOpenCamera() {
+    if (busy) return;
+    setCameraError(null);
+    const facing = kind === "photo" ? "user" : "environment";
+    setCameraFacing(facing);
+
+    // Must call getUserMedia HERE (button tap) so browser shows "Allow camera?" prompt.
+    try {
+      stopCameraStream(cameraStream);
+      const stream = await requestCameraStream(facing);
+      setCameraStream(stream);
+      setCameraOpen(true);
+    } catch {
+      // Fallback: native phone camera app (also shows system permission)
+      nativeCameraRef.current?.click();
+    }
+  }
+
+  async function onFlipCamera() {
+    const next = cameraFacing === "user" ? "environment" : "user";
+    setCameraFacing(next);
+    setCameraError(null);
+    try {
+      stopCameraStream(cameraStream);
+      const stream = await requestCameraStream(next);
+      setCameraStream(stream);
+    } catch {
+      setCameraError("Could not switch camera. Tap Allow, or use gallery.");
+    }
+  }
+
+  function onNativeCameraChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (file) onPick(kind, file);
+  }
 
   function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -34,6 +84,15 @@ function MediaPickers({
 
   return (
     <div className="media-pick-row">
+      <input
+        id={nativeCameraId}
+        ref={nativeCameraRef}
+        type="file"
+        accept="image/*"
+        capture={kind === "photo" ? "user" : "environment"}
+        className="media-file-input"
+        onChange={onNativeCameraChange}
+      />
       <input
         id={inputId}
         ref={galleryRef}
@@ -46,18 +105,24 @@ function MediaPickers({
         type="button"
         className="btn btn-primary"
         disabled={busy}
-        onClick={() => setCameraOpen(true)}
+        onClick={() => void onOpenCamera()}
       >
         {busy ? "Uploading…" : "Open camera"}
       </button>
+      <p className="camera-permit-hint">
+        Tap Open camera — your browser will ask <strong>Allow</strong> to use the camera.
+      </p>
       <label htmlFor={inputId} className={`btn btn-secondary${busy ? " btn-disabled" : ""}`}>
         {busy ? "Uploading…" : kind === "proof" ? "Gallery / PDF" : "Choose from gallery"}
       </label>
       <CameraCapture
         open={cameraOpen}
         title={kind === "photo" ? "Donor photo — camera" : "Blood-group proof — camera"}
-        facingMode={kind === "photo" ? "user" : "environment"}
-        onClose={() => setCameraOpen(false)}
+        stream={cameraStream}
+        facing={cameraFacing}
+        error={cameraError}
+        onClose={closeCamera}
+        onFlip={() => void onFlipCamera()}
         onCapture={(file) => onPick(kind, file)}
       />
     </div>
