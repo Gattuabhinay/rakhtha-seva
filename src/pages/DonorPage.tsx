@@ -9,28 +9,19 @@ import { normalizePhoneInput } from "@/lib/phone";
 import { uploadDonorMedia } from "@/lib/donorMedia";
 import { Link, useNavigate } from "react-router-dom";
 
-type MediaKind = "photo" | "proof";
-
-function MediaPickers({
-  kind,
+function PhotoPicker({
   busy,
   onPick,
 }: {
-  kind: MediaKind;
   busy: boolean;
-  onPick: (kind: MediaKind, file: File | null) => void;
+  onPick: (file: File) => void;
 }) {
-  const galleryRef = useRef<HTMLInputElement | null>(null);
   const nativeCameraRef = useRef<HTMLInputElement | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">(
-    kind === "photo" ? "user" : "environment",
-  );
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const inputId = `donor-gallery-${kind}`;
-  const nativeCameraId = `donor-native-camera-${kind}`;
-  const galleryAccept = kind === "photo" ? "image/*" : "image/*,application/pdf,.pdf";
+  const galleryId = "donor-gallery-photo";
+  const nativeCameraId = "donor-native-camera-photo";
 
   function closeCamera() {
     stopCameraStream(cameraStream);
@@ -42,44 +33,31 @@ function MediaPickers({
   async function onOpenCamera() {
     if (busy) return;
     setCameraError(null);
-    const facing = kind === "photo" ? "user" : "environment";
-    setCameraFacing(facing);
-
-    // Must call getUserMedia HERE (button tap) so browser shows "Allow camera?" prompt.
     try {
       stopCameraStream(cameraStream);
-      const stream = await requestCameraStream(facing);
+      const stream = await requestCameraStream("user");
       setCameraStream(stream);
       setCameraOpen(true);
     } catch {
-      // Fallback: native phone camera app (also shows system permission)
       nativeCameraRef.current?.click();
     }
   }
 
   async function onFlipCamera() {
-    const next = cameraFacing === "user" ? "environment" : "user";
-    setCameraFacing(next);
     setCameraError(null);
     try {
       stopCameraStream(cameraStream);
-      const stream = await requestCameraStream(next);
+      const stream = await requestCameraStream("environment");
       setCameraStream(stream);
     } catch {
       setCameraError("Could not switch camera. Tap Allow, or use gallery.");
     }
   }
 
-  function onNativeCameraChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
     e.target.value = "";
-    if (file) onPick(kind, file);
-  }
-
-  function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    e.target.value = "";
-    if (file) onPick(kind, file);
+    if (file) onPick(file);
   }
 
   return (
@@ -89,17 +67,16 @@ function MediaPickers({
         ref={nativeCameraRef}
         type="file"
         accept="image/*"
-        capture={kind === "photo" ? "user" : "environment"}
+        capture="user"
         className="media-file-input"
-        onChange={onNativeCameraChange}
+        onChange={onFileChange}
       />
       <input
-        id={inputId}
-        ref={galleryRef}
+        id={galleryId}
         type="file"
-        accept={galleryAccept}
+        accept="image/*"
         className="media-file-input"
-        onChange={onGalleryChange}
+        onChange={onFileChange}
       />
       <button
         type="button"
@@ -112,18 +89,18 @@ function MediaPickers({
       <p className="camera-permit-hint">
         Tap Open camera — your browser will ask <strong>Allow</strong> to use the camera.
       </p>
-      <label htmlFor={inputId} className={`btn btn-secondary${busy ? " btn-disabled" : ""}`}>
-        {busy ? "Uploading…" : kind === "proof" ? "Gallery / PDF" : "Choose from gallery"}
+      <label htmlFor={galleryId} className={`btn btn-secondary${busy ? " btn-disabled" : ""}`}>
+        {busy ? "Uploading…" : "Choose from gallery"}
       </label>
       <CameraCapture
         open={cameraOpen}
-        title={kind === "photo" ? "Donor photo — camera" : "Blood-group proof — camera"}
+        title="Donor photo — camera"
         stream={cameraStream}
-        facing={cameraFacing}
+        facing="user"
         error={cameraError}
         onClose={closeCamera}
         onFlip={() => void onFlipCamera()}
-        onCapture={(file) => onPick(kind, file)}
+        onCapture={onPick}
       />
     </div>
   );
@@ -134,7 +111,7 @@ function Inner() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState<"photo" | "proof" | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<RakhthaProfile | null>(null);
@@ -147,9 +124,7 @@ function Inner() {
   const [lastDonation, setLastDonation] = useState("");
   const [consent, setConsent] = useState(false);
   const [commitment, setCommitment] = useState(false);
-  const [proofAttest, setProofAttest] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [proofUrl, setProofUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -166,8 +141,6 @@ function Inner() {
         setLastDonation(p?.last_donation_date || "");
         setConsent(Boolean(p?.emergency_consent));
         setPhotoUrl(p?.photo_url || null);
-        setProofUrl(p?.blood_proof_url || null);
-        setProofAttest(Boolean(p?.blood_attested_at));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load profile");
       } finally {
@@ -176,19 +149,18 @@ function Inner() {
     })();
   }, [user]);
 
-  async function onUpload(kind: "photo" | "proof", file: File | null) {
-    if (!user || !file) return;
-    setUploading(kind);
+  async function onUploadPhoto(file: File) {
+    if (!user) return;
+    setUploading(true);
     setError(null);
     try {
-      const url = await uploadDonorMedia(user.id, kind, file);
-      if (kind === "photo") setPhotoUrl(url);
-      else setProofUrl(url);
-      setMessage(kind === "photo" ? "Photo uploaded." : "Blood-group proof uploaded.");
+      const url = await uploadDonorMedia(user.id, "photo", file);
+      setPhotoUrl(url);
+      setMessage("Photo uploaded.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
-      setUploading(null);
+      setUploading(false);
     }
   }
 
@@ -209,12 +181,6 @@ function Inner() {
       if (!commitment) {
         throw new Error("Please confirm you will be reachable for this blood group emergencies.");
       }
-      if (!proofUrl) {
-        throw new Error("Upload blood-group proof (donor card / donation slip / lab report).");
-      }
-      if (!proofAttest) {
-        throw new Error("Confirm that your uploaded proof shows this blood group.");
-      }
       if (!photoUrl) {
         throw new Error("Add your photo (camera or gallery) — it appears on Our Donors.");
       }
@@ -226,7 +192,6 @@ function Inner() {
         email: user.email,
         phone: phone.trim(),
         phone_e164: e164,
-        // Contact on file for an email-confirmed Supabase account (no SMS OTP).
         phone_verified_at: verifiedAt,
         city: city.trim() || "Hyderabad",
         area: area.trim() || null,
@@ -237,8 +202,6 @@ function Inner() {
         emergency_consent: true,
         consent_accepted_at: verifiedAt,
         photo_url: photoUrl,
-        blood_proof_url: proofUrl,
-        blood_proof_status: "uploaded",
         blood_attested_at: verifiedAt,
         show_on_donor_wall: true,
       });
@@ -257,8 +220,6 @@ function Inner() {
         last_donation_date: lastDonation || null,
         emergency_consent: true,
         photo_url: photoUrl,
-        blood_proof_url: proofUrl,
-        blood_proof_status: "uploaded",
         blood_attested_at: verifiedAt,
         show_on_donor_wall: true,
       };
@@ -291,10 +252,8 @@ function Inner() {
   const canSave =
     consent &&
     commitment &&
-    proofAttest &&
     Boolean(phone.trim()) &&
     Boolean(bloodGroup) &&
-    Boolean(proofUrl) &&
     Boolean(photoUrl);
 
   return (
@@ -305,8 +264,8 @@ function Inner() {
           Be ready to help
         </h1>
         <p className="section-lede">
-          Your account is verified by Supabase email confirmation. Add phone for emergency
-          contact, prove your blood group, then save — no SMS OTP.
+          Your account is verified by Supabase email confirmation. Add phone and your photo,
+          then save — no SMS OTP.
         </p>
 
         <div className="dash-grid donor-layout">
@@ -343,49 +302,13 @@ function Inner() {
           </label>
 
           <div className="proof-block">
-            <p className="proof-block-title">Prove this blood group</p>
-            <p className="muted" style={{ margin: "0 0 0.55rem", fontSize: "0.88rem" }}>
-              Use the camera or gallery for your donor card, donation slip, or lab report
-              showing <strong>{bloodGroup || "your group"}</strong>. Hospital still confirms
-              before transfusion — this is your attested proof.
-            </p>
-            <MediaPickers
-              kind="proof"
-              busy={uploading === "proof"}
-              onPick={(k, f) => void onUpload(k, f)}
-            />
-            {proofUrl && (
-              <a className="proof-link" href={proofUrl} target="_blank" rel="noreferrer">
-                View uploaded proof
-              </a>
-            )}
-            <label className="consent-box" style={{ marginTop: "0.65rem" }}>
-              <input
-                type="checkbox"
-                checked={proofAttest}
-                onChange={(e) => setProofAttest(e.target.checked)}
-                required
-                style={{ width: "auto", marginTop: "0.2rem" }}
-              />
-              <span>
-                I confirm this document shows my blood group as{" "}
-                <strong>{bloodGroup || "selected above"}</strong> and is mine.
-              </span>
-            </label>
-          </div>
-
-          <div className="proof-block">
             <p className="proof-block-title">Your photo for Our Donors</p>
             <p className="muted" style={{ margin: "0 0 0.55rem", fontSize: "0.88rem" }}>
               Tap <strong>Open camera</strong> (live selfie) or <strong>Choose from gallery</strong>.
               We square-crop so your card on <Link to="/donors">Our Donors</Link> stays
               perfect. Phone stays private.
             </p>
-            <MediaPickers
-              kind="photo"
-              busy={uploading === "photo"}
-              onPick={(k, f) => void onUpload(k, f)}
-            />
+            <PhotoPicker busy={uploading} onPick={(f) => void onUploadPhoto(f)} />
             {photoUrl && (
               <>
                 <img className="donor-photo-preview" src={photoUrl} alt="Your donor photo" />
@@ -464,8 +387,7 @@ function Inner() {
           </button>
           {!canSave && (
             <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-              Complete: phone → blood-group proof + attest → photo → consents → Save. Then you
-              show on Our Donors.
+              Complete: phone → photo → consents → Save. Then you show on Our Donors.
             </p>
           )}
         </form>
